@@ -1,71 +1,46 @@
 # Xcode
 #
-# gitignore contributors: remember to update Global/Xcode.gitignore, Objective-C.gitignore & Swift.gitignore
+# Created by https://www.toptal.com/developers/gitignore/api/xcode,swift
+# Edit at https://www.toptal.com/developers/gitignore?templates=xcode,swift
 
-## 用户设置
-xcuserdata/
-
-## 兼容性 Xcode 8 及更早版本
-*.xcscmblueprint
-*.xccheckout
-
-## 兼容性 Xcode 3 及更早版本
-*.mode1v3
-*.mode2v3
-*.perspectivev3
-*.pbxuser
-!default.pbxuser
-!default.mode1v3
-!default.mode2v3
-!default.perspectivev3
-
-## Obj-C/Swift 特定文件
-*.hmap
-
-## App 打包文件
-*.ipa
-*.dSYM.zip
-*.dSYM
-
-## 回放文件
-*.mobileprovision
-
-## Swift 包管理器
-#
-# 添加这个行以忽略所有Swift Package Manager相关文件
+### Swift ###
+# Standard Swift Package Manager files
 .build/
+Packages/
 
-## CocoaPods
-#
-# 推荐把Pods目录添加到.gitignore文件里
+### Xcode ###
+# Xcode temporary files
+*.moved-aside
+*.xcuserstate
+
+# User specific Xcode files
+xcuserdata/
+*.xcuserdatad
+
+# Build generated
+build/
+DerivedData/
+
+# Various settings
+*.xcscheme
+*.xcsettings
+
+# Bundle artefacts
+*.app
+*.ipa
+
+# DS Store files
+.DS_Store
+
+# Cursor specific files
+.cursor/
+
+# Carthage
+Carthage/Build
+
+# Pods
 Pods/
 
-## Carthage
-#
-# 添加此行以忽略Carthage项目文件和生成的文件
-Carthage/Build/
-
-# fastlane
-#
-# 推荐忽略fastlane生成的截屏以防止泄露敏感信息
-fastlane/report.xml
-fastlane/Preview.html
-fastlane/screenshots/**/*.png
-fastlane/test_output
-
-# 代码注入工具
-#
-# 也推荐忽略注入工具生成的文件
-iOSInjectionProject/
-
-# macOS特定文件
-.DS_Store
-.AppleDouble
-.LSOverride
-
-# 编辑器特定文件
-.vscode/
-.idea/
-
-# 自定义Cursor文件
-.cursor/ 
+# Swift Playgrounds
+*.swiftpm
+*.playground 
