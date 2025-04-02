@@ -4,10 +4,37 @@ import HealthKit
 // MARK: - Data Structures
 struct DailyHealthData {
     var date: Date
+    
+    // 活动与运动数据
     var stepCount: Double?
-    var heartRate: Double?
+    var distanceWalkingRunning: Double?
+    var flightsClimbed: Double?
     var activeEnergy: Double?
+    var basalEnergy: Double?
+    var exerciseTime: TimeInterval?
+    var standTime: TimeInterval?
+    
+    // 生命体征数据
+    var heartRate: Double?
+    var restingHeartRate: Double?
+    var heartRateVariability: Double?
+    var respiratoryRate: Double?
+    var oxygenSaturation: Double?
+    var bloodPressureSystolic: Double?
+    var bloodPressureDiastolic: Double?
+    
+    // 体温和体重数据
+    var bodyTemperature: Double?
+    var bodyMass: Double?
+    var bodyMassIndex: Double?
+    var bodyFatPercentage: Double?
+    
+    // 睡眠数据
     var sleepDetail: SleepDetail?
+    
+    // 营养数据
+    var dietaryEnergy: Double?
+    var dietaryWater: Double?
 }
 
 struct SleepDetail {
@@ -28,13 +55,38 @@ struct SleepDetail {
     var sleepBodyTemperature: Double?  // 睡眠期间平均体温
 }
 
-struct HealthDataSummary {
+struct HealthDataSummary: Equatable {
     // 总计数据
     var stepCount: Double?
     var averageHeartRate: Double?
     var totalActiveEnergy: Double?
     var sleepDuration: TimeInterval?
     var averageSleepDuration: TimeInterval?
+    
+    // 扩展的生命体征数据摘要
+    var averageRestingHeartRate: Double?
+    var averageHeartRateVariability: Double?
+    var averageRespiratoryRate: Double?
+    var averageOxygenSaturation: Double?
+    var averageBloodPressureSystolic: Double?
+    var averageBloodPressureDiastolic: Double?
+    var averageBodyTemperature: Double?
+    
+    // 扩展的活动数据摘要
+    var totalDistanceWalkingRunning: Double?
+    var totalFlightsClimbed: Double?
+    var totalBasalEnergy: Double?
+    var totalExerciseTime: TimeInterval?
+    var totalStandTime: TimeInterval?
+    
+    // 体重相关数据摘要
+    var averageBodyMass: Double?
+    var averageBodyMassIndex: Double?
+    var averageBodyFatPercentage: Double?
+    
+    // 营养数据摘要
+    var totalDietaryEnergy: Double?
+    var totalDietaryWater: Double?
     
     // 按天数据
     var dailySleep: [Date: TimeInterval]?
@@ -47,9 +99,38 @@ struct HealthDataSummary {
     var dailyActiveEnergy: [Date: Double]?
     var dailyHeartRate: [Date: Double]?
     
+    // 扩展：按天详细数据
+    var dailyDistanceWalkingRunning: [Date: Double]?
+    var dailyFlightsClimbed: [Date: Double]?
+    var dailyBasalEnergy: [Date: Double]?
+    var dailyExerciseTime: [Date: TimeInterval]?
+    var dailyStandTime: [Date: TimeInterval]?
+    var dailyRestingHeartRate: [Date: Double]?
+    var dailyHeartRateVariability: [Date: Double]?
+    var dailyRespiratoryRate: [Date: Double]?
+    var dailyOxygenSaturation: [Date: Double]?
+    var dailyBloodPressure: [Date: (systolic: Double, diastolic: Double)]?
+    var dailyBodyTemperature: [Date: Double]?
+    var dailyBodyMass: [Date: Double]?
+    var dailyBodyMassIndex: [Date: Double]?
+    var dailyBodyFatPercentage: [Date: Double]?
+    var dailyDietaryEnergy: [Date: Double]?
+    var dailyDietaryWater: [Date: Double]?
+    
     // 数据采集时间范围
     var startDate: Date?
     var endDate: Date?
+    
+    // Equatable协议实现，只判断关键元素是否相等
+    static func == (lhs: HealthDataSummary, rhs: HealthDataSummary) -> Bool {
+        return lhs.stepCount == rhs.stepCount &&
+               lhs.averageHeartRate == rhs.averageHeartRate &&
+               lhs.totalActiveEnergy == rhs.totalActiveEnergy &&
+               lhs.sleepDuration == rhs.sleepDuration &&
+               lhs.averageSleepDuration == rhs.averageSleepDuration &&
+               lhs.startDate == rhs.startDate &&
+               lhs.endDate == rhs.endDate
+    }
 }
 
 class HealthKitManager: ObservableObject {
@@ -79,14 +160,20 @@ class HealthKitManager: ObservableObject {
         // 安全地定义要读取的数据类型集合
         var readTypesArray: [HKObjectType] = []
         
+        // 活动与运动数据类型
         if let stepType = HKObjectType.quantityType(forIdentifier: .stepCount) {
             readTypesArray.append(stepType)
             print("HealthKitManager: 添加步数数据类型")
         }
         
-        if let heartRateType = HKObjectType.quantityType(forIdentifier: .heartRate) {
-            readTypesArray.append(heartRateType)
-            print("HealthKitManager: 添加心率数据类型")
+        if let distanceType = HKObjectType.quantityType(forIdentifier: .distanceWalkingRunning) {
+            readTypesArray.append(distanceType)
+            print("HealthKitManager: 添加步行/跑步距离数据类型")
+        }
+        
+        if let flightsType = HKObjectType.quantityType(forIdentifier: .flightsClimbed) {
+            readTypesArray.append(flightsType)
+            print("HealthKitManager: 添加爬楼数据类型")
         }
         
         if let energyType = HKObjectType.quantityType(forIdentifier: .activeEnergyBurned) {
@@ -94,6 +181,79 @@ class HealthKitManager: ObservableObject {
             print("HealthKitManager: 添加活动能量数据类型")
         }
         
+        if let basalEnergyType = HKObjectType.quantityType(forIdentifier: .basalEnergyBurned) {
+            readTypesArray.append(basalEnergyType)
+            print("HealthKitManager: 添加基础能量数据类型")
+        }
+        
+        if let exerciseTimeType = HKObjectType.quantityType(forIdentifier: .appleExerciseTime) {
+            readTypesArray.append(exerciseTimeType)
+            print("HealthKitManager: 添加锻炼时间数据类型")
+        }
+        
+        if let standTimeType = HKObjectType.quantityType(forIdentifier: .appleStandTime) {
+            readTypesArray.append(standTimeType)
+            print("HealthKitManager: 添加站立时间数据类型")
+        }
+        
+        // 生命体征数据类型
+        if let heartRateType = HKObjectType.quantityType(forIdentifier: .heartRate) {
+            readTypesArray.append(heartRateType)
+            print("HealthKitManager: 添加心率数据类型")
+        }
+        
+        if let restingHeartRateType = HKObjectType.quantityType(forIdentifier: .restingHeartRate) {
+            readTypesArray.append(restingHeartRateType)
+            print("HealthKitManager: 添加静息心率数据类型")
+        }
+        
+        if let heartRateVariabilityType = HKObjectType.quantityType(forIdentifier: .heartRateVariabilitySDNN) {
+            readTypesArray.append(heartRateVariabilityType)
+            print("HealthKitManager: 添加心率变异性数据类型")
+        }
+        
+        if let respiratoryRateType = HKObjectType.quantityType(forIdentifier: .respiratoryRate) {
+            readTypesArray.append(respiratoryRateType)
+            print("HealthKitManager: 添加呼吸率数据类型")
+        }
+        
+        if let oxygenSaturationType = HKObjectType.quantityType(forIdentifier: .oxygenSaturation) {
+            readTypesArray.append(oxygenSaturationType)
+            print("HealthKitManager: 添加血氧饱和度数据类型")
+        }
+        
+        if let bloodPressureSystolicType = HKObjectType.quantityType(forIdentifier: .bloodPressureSystolic) {
+            readTypesArray.append(bloodPressureSystolicType)
+            print("HealthKitManager: 添加收缩压数据类型")
+        }
+        
+        if let bloodPressureDiastolicType = HKObjectType.quantityType(forIdentifier: .bloodPressureDiastolic) {
+            readTypesArray.append(bloodPressureDiastolicType)
+            print("HealthKitManager: 添加舒张压数据类型")
+        }
+        
+        // 体温和体重数据类型
+        if let bodyTemperatureType = HKObjectType.quantityType(forIdentifier: .bodyTemperature) {
+            readTypesArray.append(bodyTemperatureType)
+            print("HealthKitManager: 添加体温数据类型")
+        }
+        
+        if let bodyMassType = HKObjectType.quantityType(forIdentifier: .bodyMass) {
+            readTypesArray.append(bodyMassType)
+            print("HealthKitManager: 添加体重数据类型")
+        }
+        
+        if let bodyMassIndexType = HKObjectType.quantityType(forIdentifier: .bodyMassIndex) {
+            readTypesArray.append(bodyMassIndexType)
+            print("HealthKitManager: 添加BMI数据类型")
+        }
+        
+        if let bodyFatPercentageType = HKObjectType.quantityType(forIdentifier: .bodyFatPercentage) {
+            readTypesArray.append(bodyFatPercentageType)
+            print("HealthKitManager: 添加体脂率数据类型")
+        }
+        
+        // 睡眠数据类型
         if let sleepType = HKObjectType.categoryType(forIdentifier: .sleepAnalysis) {
             readTypesArray.append(sleepType)
             print("HealthKitManager: 添加睡眠分析数据类型")
@@ -107,16 +267,15 @@ class HealthKitManager: ObservableObject {
             }
         }
         
-        // 添加呼吸率数据类型
-        if let respiratoryRateType = HKObjectType.quantityType(forIdentifier: .respiratoryRate) {
-            readTypesArray.append(respiratoryRateType)
-            print("HealthKitManager: 添加呼吸率数据类型")
+        // 营养数据类型
+        if let dietaryEnergyType = HKObjectType.quantityType(forIdentifier: .dietaryEnergyConsumed) {
+            readTypesArray.append(dietaryEnergyType)
+            print("HealthKitManager: 添加摄入能量数据类型")
         }
         
-        // 添加体温数据类型
-        if let bodyTemperatureType = HKObjectType.quantityType(forIdentifier: .bodyTemperature) {
-            readTypesArray.append(bodyTemperatureType)
-            print("HealthKitManager: 添加体温数据类型")
+        if let dietaryWaterType = HKObjectType.quantityType(forIdentifier: .dietaryWater) {
+            readTypesArray.append(dietaryWaterType)
+            print("HealthKitManager: 添加饮水数据类型")
         }
         
         // 安全检查，确保至少有一个读取类型
@@ -257,9 +416,26 @@ class HealthKitManager: ObservableObject {
             let dailyData = DailyHealthData(
                 date: dayStart,
                 stepCount: steps,
-                heartRate: heartRate,
+                distanceWalkingRunning: nil,
+                flightsClimbed: nil,
                 activeEnergy: energy,
-                sleepDetail: nil  // 暂时为nil，后面处理睡眠数据时会更新
+                basalEnergy: nil,
+                exerciseTime: nil,
+                standTime: nil,
+                heartRate: heartRate,
+                restingHeartRate: nil,
+                heartRateVariability: nil,
+                respiratoryRate: nil,
+                oxygenSaturation: nil,
+                bloodPressureSystolic: nil,
+                bloodPressureDiastolic: nil,
+                bodyTemperature: nil,
+                bodyMass: nil,
+                bodyMassIndex: nil,
+                bodyFatPercentage: nil,
+                sleepDetail: nil,
+                dietaryEnergy: nil,
+                dietaryWater: nil
             )
             
             dailyHealthData.append(dailyData)

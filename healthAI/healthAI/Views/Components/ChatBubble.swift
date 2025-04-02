@@ -1,5 +1,6 @@
 import SwiftUI
 
+// 聊天消息气泡组件
 struct ChatBubble: View {
     let message: ChatMessage
     let isLastMessage: Bool
@@ -12,10 +13,13 @@ struct ChatBubble: View {
                     .font(.system(size: 26))
                     .padding(.top, 4)
                     .padding(.trailing, 2)
+            } else if message.role == .user {
+                Spacer()
             }
             
             VStack(alignment: message.role == .user ? .trailing : .leading, spacing: 2) {
                 Text(message.content)
+                    .font(.body)
                     .padding(12)
                     .foregroundColor(message.role == .user ? .white : .primary)
                     .background(
@@ -36,7 +40,7 @@ struct ChatBubble: View {
                     HStack {
                         if message.role == .assistant {
                             Text(message.timestamp, style: .time)
-                                .font(.caption2)
+                                .font(.caption)
                                 .foregroundColor(.secondary)
                         }
                     }
@@ -45,13 +49,12 @@ struct ChatBubble: View {
                     .padding(.top, 2)
                 }
             }
-            .frame(maxWidth: message.role == .user ? nil : .infinity, alignment: message.role == .user ? .trailing : .leading)
             
             if message.role == .user {
-                Spacer(minLength: 30)
+                // 移除额外的Spacer，避免双重右对齐
             }
         }
-        .padding(message.role == .user ? .leading : .trailing, 60)
+        .padding(message.role == .user ? .trailing : .leading, 20)
         .padding(.vertical, 4)
         .id(message.id) // 用于滚动到最新消息
     }

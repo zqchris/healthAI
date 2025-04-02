@@ -1,6 +1,33 @@
 import SwiftUI
 import UIKit
 
+// 键盘隐藏扩展
+extension UIApplication {
+    func endEditing() {
+        sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+    }
+}
+
+// 增强的ScrollView，支持点击隐藏键盘
+struct DismissKeyboardScrollView<Content: View>: View {
+    let content: Content
+    
+    init(@ViewBuilder content: () -> Content) {
+        self.content = content()
+    }
+    
+    var body: some View {
+        ScrollView {
+            content
+        }
+        .simultaneousGesture(
+            TapGesture().onEnded {
+                UIApplication.shared.endEditing()
+            }
+        )
+    }
+}
+
 // UITextView的包装器，支持中文输入和回车键提交
 struct TextView: UIViewRepresentable {
     @Binding var text: String
@@ -112,6 +139,22 @@ struct CustomTextField: UIViewRepresentable {
             }
             return false
         }
+        
+        func textFieldDidBeginEditing(_ textField: UITextField) {
+            // 添加通知监听，当键盘要隐藏时响应
+            NotificationCenter.default.addObserver(
+                forName: UIResponder.keyboardWillHideNotification,
+                object: nil,
+                queue: .main
+            ) { _ in
+                textField.resignFirstResponder()
+            }
+        }
+        
+        func textFieldDidEndEditing(_ textField: UITextField) {
+            // 移除通知监听
+            NotificationCenter.default.removeObserver(self, name: UIResponder.keyboardWillHideNotification, object: nil)
+        }
     }
 }
 
@@ -147,216 +190,310 @@ struct ChatView: View {
     @StateObject private var viewModel = ChatViewModel()
     @State private var scrollToBottom = false
     @State private var showQuickInput = false
+    @State private var isInitialized = false
+    @State private var initializationError: String? = nil
     
     var body: some View {
-        VStack(spacing: 0) {
-            // 消息列表
-            ScrollViewReader { scrollView in
-                ScrollView {
-                    LazyVStack(spacing: 0) {
-                        ForEach(Array(viewModel.messages.filter { $0.role != .system }.enumerated()), id: \.element.id) { index, message in
-                            ChatBubble(
-                                message: message,
-                                isLastMessage: index == viewModel.messages.filter { $0.role != .system }.count - 1
-                            )
-                        }
+        ZStack {
+            // 初始化错误或加载中的视图
+            if !isInitialized {
+                VStack(spacing: 16) {
+                    if let error = initializationError {
+                        Image(systemName: "exclamationmark.triangle")
+                            .font(.system(size: 50))
+                            .foregroundColor(.orange)
+                            .padding()
                         
-                        if viewModel.isTyping {
-                            TypingIndicator()
-                                .padding(.leading, 8)
-                                .padding(.top, 8)
-                                .id("typingIndicator")
-                        }
+                        Text("初始化出错")
+                            .font(.headline)
                         
-                        // 在没有消息时显示引导文本
-                        if viewModel.messages.filter({ $0.role != .system }).isEmpty {
-                            VStack(spacing: 20) {
-                                Image(systemName: "heart.text.square.fill")
-                                    .resizable()
-                                    .aspectRatio(contentMode: .fit)
-                                    .frame(width: 60, height: 60)
-                                    .foregroundColor(.mint.opacity(0.7))
-                                
-                                Text("欢迎使用健康AI助手")
-                                    .font(.title2)
-                                    .fontWeight(.medium)
-                                
-                                Text("您可以向我询问任何健康相关的问题，我会尽力为您提供专业的建议。")
-                                    .font(.body)
-                                    .multilineTextAlignment(.center)
-                                    .foregroundColor(.secondary)
-                                    .padding(.horizontal)
-                                
-                                if viewModel.apiConfig.apiKey.isEmpty {
-                                    Button(action: {
-                                        viewModel.showSettings = true
-                                    }) {
-                                        Text("设置API密钥")
-                                            .fontWeight(.medium)
-                                            .padding(.horizontal, 16)
-                                            .padding(.vertical, 8)
-                                            .background(Color.blue)
-                                            .foregroundColor(.white)
-                                            .cornerRadius(8)
-                                    }
-                                    .padding(.top, 8)
-                                }
-                                
-                                // 添加快速输入提示
-                                Button {
-                                    showQuickInput.toggle()
-                                } label: {
-                                    HStack {
-                                        Image(systemName: "text.bubble")
-                                        Text("使用快速输入短语")
-                                    }
-                                    .font(.footnote)
-                                    .foregroundColor(.blue)
-                                }
-                                .padding(.top, 20)
+                        Text(error)
+                            .font(.subheadline)
+                            .multilineTextAlignment(.center)
+                            .foregroundColor(.secondary)
+                            .padding(.horizontal)
+                        
+                        Button("重试") {
+                            Task {
+                                await initializeViewModel()
                             }
-                            .padding(40)
-                            .frame(maxWidth: .infinity)
+                        }
+                        .padding()
+                        .background(Color.blue)
+                        .foregroundColor(.white)
+                        .cornerRadius(8)
+                        .padding(.top)
+                    } else {
+                        ProgressView()
+                            .scaleEffect(1.5)
+                            .padding()
+                        
+                        Text("正在初始化...")
+                            .font(.headline)
+                    }
+                }
+                .padding()
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(Color(UIColor.systemBackground))
+            } else {
+                // 主聊天界面 (原有界面保持不变)
+                VStack(spacing: 0) {
+                    // 消息列表
+                    ScrollViewReader { scrollView in
+                        DismissKeyboardScrollView {
+                            LazyVStack(spacing: 0) {
+                                ForEach(Array(viewModel.messages.filter { $0.role != .system }.enumerated()), id: \.element.id) { index, message in
+                                    ChatBubble(
+                                        message: message,
+                                        isLastMessage: index == viewModel.messages.filter { $0.role != .system }.count - 1
+                                    )
+                                }
+                                
+                                if viewModel.isTyping {
+                                    TypingIndicator()
+                                        .padding(.leading, 8)
+                                        .padding(.top, 8)
+                                        .id("typingIndicator")
+                                }
+                                
+                                // 在没有消息时显示引导文本
+                                if viewModel.messages.filter({ $0.role != .system }).isEmpty {
+                                    VStack(spacing: 20) {
+                                        Image(systemName: "heart.text.square.fill")
+                                            .resizable()
+                                            .aspectRatio(contentMode: .fit)
+                                            .frame(width: 60, height: 60)
+                                            .foregroundColor(.mint.opacity(0.7))
+                                        
+                                        Text("欢迎使用健康AI助手")
+                                            .font(.title2)
+                                            .fontWeight(.medium)
+                                        
+                                        Text("您可以向我询问任何健康相关的问题，我会尽力为您提供专业的建议。")
+                                            .font(.body)
+                                            .multilineTextAlignment(.center)
+                                            .foregroundColor(.secondary)
+                                            .padding(.horizontal)
+                                        
+                                        if viewModel.apiConfig.apiKey.isEmpty {
+                                            Button(action: {
+                                                viewModel.showSettings = true
+                                            }) {
+                                                Text("设置API密钥")
+                                                    .fontWeight(.medium)
+                                                    .padding(.horizontal, 16)
+                                                    .padding(.vertical, 8)
+                                                    .background(Color.blue)
+                                                    .foregroundColor(.white)
+                                                    .cornerRadius(8)
+                                            }
+                                            .padding(.top, 8)
+                                        }
+                                        
+                                        // 添加快速输入提示
+                                        Button {
+                                            showQuickInput.toggle()
+                                        } label: {
+                                            HStack {
+                                                Image(systemName: "text.bubble")
+                                                Text("使用快速输入短语")
+                                            }
+                                            .font(.footnote)
+                                            .foregroundColor(.blue)
+                                        }
+                                        .padding(.top, 20)
+                                    }
+                                    .padding(40)
+                                    .frame(maxWidth: .infinity)
+                                }
+                            }
+                            .padding(.vertical, 8)
+                        }
+                        .onChange(of: viewModel.messages.count) { _ in
+                            if !viewModel.messages.isEmpty {
+                                withAnimation {
+                                    if let lastMessage = viewModel.messages.last {
+                                        scrollView.scrollTo(lastMessage.id, anchor: .bottom)
+                                    }
+                                }
+                            }
+                        }
+                        .onChange(of: viewModel.isTyping) { isTyping in
+                            if isTyping {
+                                withAnimation {
+                                    scrollView.scrollTo("typingIndicator", anchor: .bottom)
+                                }
+                            }
+                        }
+                        .onChange(of: viewModel.currentResponse) { _ in
+                            if !viewModel.messages.isEmpty {
+                                withAnimation {
+                                    if let lastMessage = viewModel.messages.last {
+                                        scrollView.scrollTo(lastMessage.id, anchor: .bottom)
+                                    }
+                                }
+                            }
                         }
                     }
+                    
+                    Divider()
+                    
+                    // 错误信息显示
+                    if let errorMessage = viewModel.errorMessage {
+                        VStack(alignment: .leading, spacing: 4) {
+                            HStack {
+                                Image(systemName: "exclamationmark.triangle.fill")
+                                    .foregroundColor(.orange)
+                                Text("发生错误")
+                                    .font(.headline)
+                                    .foregroundColor(.orange)
+                                Spacer()
+                                Button {
+                                    viewModel.errorMessage = nil
+                                } label: {
+                                    Image(systemName: "xmark.circle.fill")
+                                        .foregroundColor(.gray)
+                                }
+                            }
+                            
+                            Text(errorMessage)
+                                .font(.footnote)
+                                .foregroundColor(.secondary)
+                                .padding(.top, 2)
+                        }
+                        .padding(10)
+                        .background(Color(UIColor.secondarySystemBackground))
+                        .cornerRadius(8)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 8)
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                    }
+                    
+                    // 快速输入短语按钮
+                    if showQuickInput {
+                        QuickInputButtonsView { phrase in
+                            viewModel.inputMessage = phrase
+                        }
+                        .padding(.vertical, 8)
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                    }
+                    
+                    // 输入区域
+                    HStack(alignment: .center) {
+                        // 快速输入按钮
+                        Button {
+                            withAnimation {
+                                showQuickInput.toggle()
+                            }
+                        } label: {
+                            Image(systemName: showQuickInput ? "text.bubble.fill" : "text.bubble")
+                                .font(.system(size: 22))
+                                .foregroundColor(.blue)
+                        }
+                        .padding(.leading, 4)
+                        
+                        // 自定义输入框
+                        CustomTextField(
+                            text: $viewModel.inputMessage,
+                            placeholder: "输入消息...",
+                            onCommit: viewModel.sendMessage,
+                            isEnabled: !viewModel.isTyping
+                        )
+                        .frame(height: 40)
+                        .padding(.vertical, 4)
+                        .background(Color(UIColor.secondarySystemBackground))
+                        .cornerRadius(20)
+                        .opacity(viewModel.isTyping ? 0.6 : 1.0)
+                        
+                        Button(action: {
+                            viewModel.sendMessage()
+                        }) {
+                            Image(systemName: "arrow.up.circle.fill")
+                                .font(.system(size: 30))
+                                .foregroundColor(viewModel.inputMessage.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || viewModel.isTyping ? .gray : .blue)
+                        }
+                        .disabled(viewModel.inputMessage.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || viewModel.isTyping)
+                    }
+                    .padding(.horizontal, 16)
                     .padding(.vertical, 8)
                 }
-                .onChange(of: viewModel.messages.count) { _ in
-                    if !viewModel.messages.isEmpty {
-                        withAnimation {
-                            if let lastMessage = viewModel.messages.last {
-                                scrollView.scrollTo(lastMessage.id, anchor: .bottom)
+                .navigationTitle("健康顾问")
+                .navigationBarTitleDisplayMode(.inline)
+                .sheet(isPresented: $viewModel.showSettings) {
+                    APISettingsView(
+                        apiConfig: $viewModel.apiConfig,
+                        showSettings: $viewModel.showSettings,
+                        apiType: $viewModel.apiType,
+                        onSave: viewModel.saveAPISettings,
+                        onUpdateType: viewModel.updateAPIType
+                    )
+                }
+                .toolbar {
+                    ToolbarItem(placement: .navigationBarTrailing) {
+                        Menu {
+                            Button(action: {
+                                viewModel.showSettings = true
+                            }) {
+                                Label("API设置", systemImage: "gear")
                             }
-                        }
-                    }
-                }
-                .onChange(of: viewModel.isTyping) { isTyping in
-                    if isTyping {
-                        withAnimation {
-                            scrollView.scrollTo("typingIndicator", anchor: .bottom)
-                        }
-                    }
-                }
-                .onChange(of: viewModel.currentResponse) { _ in
-                    if !viewModel.messages.isEmpty {
-                        withAnimation {
-                            if let lastMessage = viewModel.messages.last {
-                                scrollView.scrollTo(lastMessage.id, anchor: .bottom)
+                            
+                            Button(action: {
+                                viewModel.clearChat()
+                            }) {
+                                Label("清空聊天", systemImage: "trash")
                             }
-                        }
-                    }
-                }
-            }
-            
-            Divider()
-            
-            // 错误信息显示
-            if let errorMessage = viewModel.errorMessage {
-                VStack(alignment: .leading, spacing: 4) {
-                    HStack {
-                        Image(systemName: "exclamationmark.triangle.fill")
-                            .foregroundColor(.orange)
-                        Text("发生错误")
-                            .font(.headline)
-                            .foregroundColor(.orange)
-                        Spacer()
-                        Button {
-                            viewModel.errorMessage = nil
                         } label: {
-                            Image(systemName: "xmark.circle.fill")
-                                .foregroundColor(.gray)
+                            Image(systemName: "ellipsis.circle")
                         }
                     }
-                    
-                    Text(errorMessage)
-                        .font(.footnote)
-                        .foregroundColor(.secondary)
-                        .padding(.top, 2)
                 }
-                .padding(10)
-                .background(Color(UIColor.secondarySystemBackground))
-                .cornerRadius(8)
-                .padding(.horizontal, 16)
-                .padding(.vertical, 8)
-                .transition(.move(edge: .bottom).combined(with: .opacity))
+                .onTapGesture {
+                    UIApplication.shared.endEditing()
+                }
+            }
+        }
+        .task {
+            // 在视图出现时异步初始化ViewModel
+            if !isInitialized {
+                await initializeViewModel()
+            }
+        }
+    }
+    
+    // 异步初始化ViewModel，处理可能的错误
+    private func initializeViewModel() async {
+        do {
+            // 将标记设置为正在初始化
+            DispatchQueue.main.async {
+                self.initializationError = nil
+                self.isInitialized = false
             }
             
-            // 快速输入短语按钮
-            if showQuickInput {
-                QuickInputButtonsView { phrase in
-                    viewModel.inputMessage = phrase
-                }
-                .padding(.vertical, 8)
-                .transition(.move(edge: .bottom).combined(with: .opacity))
+            // 等待短暂时间确保UI更新
+            try? await Task.sleep(nanoseconds: 500_000_000) // 0.5秒
+            
+            // 确保 ChatViewModel 已正确初始化
+            guard viewModel != nil else {
+                throw NSError(domain: "com.yourapp.healthAI", code: 100, userInfo: [NSLocalizedDescriptionKey: "聊天视图模型初始化失败"])
             }
             
-            // 输入区域
-            HStack(alignment: .center) {
-                // 快速输入按钮
-                Button {
-                    withAnimation {
-                        showQuickInput.toggle()
-                    }
-                } label: {
-                    Image(systemName: showQuickInput ? "text.bubble.fill" : "text.bubble")
-                        .font(.system(size: 22))
-                        .foregroundColor(.blue)
-                }
-                .padding(.leading, 4)
-                
-                // 自定义输入框
-                CustomTextField(
-                    text: $viewModel.inputMessage,
-                    placeholder: "输入消息...",
-                    onCommit: viewModel.sendMessage,
-                    isEnabled: !viewModel.isTyping
-                )
-                .frame(height: 40)
-                .padding(.vertical, 4)
-                .background(Color(UIColor.secondarySystemBackground))
-                .cornerRadius(20)
-                .opacity(viewModel.isTyping ? 0.6 : 1.0)
-                
-                Button(action: {
-                    viewModel.sendMessage()
-                }) {
-                    Image(systemName: "arrow.up.circle.fill")
-                        .font(.system(size: 30))
-                        .foregroundColor(viewModel.inputMessage.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || viewModel.isTyping ? .gray : .blue)
-                }
-                .disabled(viewModel.inputMessage.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || viewModel.isTyping)
+            // 标记初始化完成
+            DispatchQueue.main.async {
+                self.isInitialized = true
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 8)
-        }
-        .navigationTitle("健康顾问")
-        .navigationBarTitleDisplayMode(.inline)
-        .sheet(isPresented: $viewModel.showSettings) {
-            APISettingsView(
-                apiConfig: $viewModel.apiConfig,
-                showSettings: $viewModel.showSettings,
-                apiType: $viewModel.apiType,
-                onSave: viewModel.saveAPISettings,
-                onUpdateType: viewModel.updateAPIType
-            )
-        }
-        .toolbar {
-            ToolbarItem(placement: .navigationBarTrailing) {
-                Menu {
-                    Button(action: {
-                        viewModel.showSettings = true
-                    }) {
-                        Label("API设置", systemImage: "gear")
-                    }
-                    
-                    Button(action: {
-                        viewModel.clearChat()
-                    }) {
-                        Label("清空聊天", systemImage: "trash")
-                    }
-                } label: {
-                    Image(systemName: "ellipsis.circle")
-                }
+        } catch let error as NSError {
+            print("初始化错误: \(error.localizedDescription)")
+            
+            // 安全地在主线程更新UI
+            DispatchQueue.main.async {
+                self.initializationError = error.localizedDescription
+            }
+        } catch {
+            print("未知初始化错误")
+            
+            // 处理未知错误
+            DispatchQueue.main.async {
+                self.initializationError = "初始化过程中发生未知错误，请重试。"
             }
         }
     }
