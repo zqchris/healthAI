@@ -194,7 +194,7 @@ struct HealthScoreCard: View {
     
     // 根据分数返回颜色
     private var scoreColor: Color {
-        ThemeManager.DataColors.healthScore(score)
+        ThemeManager.shared.DataColors.healthScore(score)
     }
     
     // 根据分数返回评价
@@ -217,7 +217,7 @@ struct ActivityAnalysisCard: View {
             HStack {
                 Image(systemName: "figure.walk")
                     .font(.title2)
-                    .foregroundColor(ThemeManager.shared.DataColors.steps)
+                    .foregroundColor(Color.green)
                 
                 Text("活动分析")
                     .font(.headline)
@@ -401,7 +401,7 @@ struct SleepAnalysisCard: View {
             HStack {
                 Image(systemName: "bed.double.fill")
                     .font(.title2)
-                    .foregroundColor(ThemeManager.shared.DataColors.sleep)
+                    .foregroundColor(Color.blue)
                 
                 Text("睡眠分析")
                     .font(.headline)
@@ -719,7 +719,7 @@ struct HeartRateAnalysisCard: View {
             HStack {
                 Image(systemName: "heart.fill")
                     .font(.title2)
-                    .foregroundColor(ThemeManager.shared.DataColors.heartRate)
+                    .foregroundColor(Color.red)
                 
                 Text("心率分析")
                     .font(.headline)
