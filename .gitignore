@@ -43,4 +43,9 @@ Pods/
 
 # Swift Playgrounds
 *.swiftpm
-*.playground 
+*.playground
+
+# Custom ignores for backup files
+backup/
+*.backup
+*.lastbackup 
