@@ -1,4 +1,17 @@
-// MARK: - 数据颜色
+import SwiftUI
+
+class ThemeManager {
+    static let shared = ThemeManager()
+    
+    // 主题颜色
+    let primaryColor = Color("PrimaryColor")
+    let secondaryColor = Color("SecondaryColor")
+    let accentColor = Color("AccentColor")
+    
+    // 私有初始化器，确保单例模式
+    private init() {}
+    
+    // MARK: - 数据颜色
     struct DataColors {
         // 已有颜色
         static let steps = Color.green
@@ -23,3 +36,4 @@
         static let dietaryEnergy = Color.green
         static let dietaryWater = Color.cyan
     } 
+} 

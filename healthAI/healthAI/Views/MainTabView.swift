@@ -111,12 +111,10 @@ struct MainTabView: View {
         let primaryColor = ThemeManager.shared.primaryColor
         
         var body: some View {
-            HStack {
+            HStack(spacing: 0) {
                 ForEach(0..<4) { index in
                     Button(action: {
-                        withAnimation {
-                            selectedTab = index
-                        }
+                        self.selectedTab = index
                     }) {
                         TabBarItem(
                             icon: tabIcon(for: index),
@@ -125,6 +123,8 @@ struct MainTabView: View {
                             primaryColor: primaryColor
                         )
                     }
+                    .frame(maxWidth: .infinity)
+                    .buttonStyle(PlainButtonStyle()) // 使用PlainButtonStyle确保点击效果不影响视觉
                 }
             }
             .padding(.vertical, 10)
@@ -168,7 +168,6 @@ struct MainTabView: View {
         
         var body: some View {
             VStack(spacing: 4) {
-                // 保持图标形状不变，只改变颜色
                 Image(systemName: icon)
                     .font(.system(size: 22))
                     .foregroundColor(isSelected ? primaryColor : .gray)
@@ -485,7 +484,7 @@ struct HealthDataContentView: View {
     
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
+            VStack(alignment: .leading, spacing: 22) {
                 // 顶部概览卡片
                 VStack {
                     HStack {
@@ -512,6 +511,7 @@ struct HealthDataContentView: View {
                 // 分类数据标题
                 Text("活动与运动")
                     .font(.headline)
+                    .fontWeight(.bold)
                     .foregroundColor(.primary)
                     .padding(.horizontal)
                 
@@ -544,9 +544,10 @@ struct HealthDataContentView: View {
                 // 分类数据标题
                 Text("生命体征")
                     .font(.headline)
+                    .fontWeight(.bold)
                     .foregroundColor(.primary)
                     .padding(.horizontal)
-                    .padding(.top)
+                    .padding(.top, 8)
                 
                 // 心率卡片和详情
                 HeartRateDataSection(summary: summary)
@@ -585,9 +586,10 @@ struct HealthDataContentView: View {
                 // 分类数据标题
                 Text("睡眠")
                     .font(.headline)
+                    .fontWeight(.bold)
                     .foregroundColor(.primary)
                     .padding(.horizontal)
-                    .padding(.top)
+                    .padding(.top, 8)
                 
                 // 睡眠数据卡片和详情
                 SleepDataSection(summary: summary)
@@ -596,9 +598,10 @@ struct HealthDataContentView: View {
                 // 分类数据标题
                 Text("体重与体型")
                     .font(.headline)
+                    .fontWeight(.bold)
                     .foregroundColor(.primary)
                     .padding(.horizontal)
-                    .padding(.top)
+                    .padding(.top, 8)
                 
                 // 体重
                 if summary.averageBodyMass != nil || summary.dailyBodyMass?.isEmpty == false {
@@ -621,9 +624,10 @@ struct HealthDataContentView: View {
                 // 分类数据标题
                 Text("营养")
                     .font(.headline)
+                    .fontWeight(.bold)
                     .foregroundColor(.primary)
                     .padding(.horizontal)
-                    .padding(.top)
+                    .padding(.top, 8)
                 
                 // 摄入能量
                 if summary.totalDietaryEnergy != nil || summary.dailyDietaryEnergy?.isEmpty == false {
@@ -656,13 +660,14 @@ struct HealthDataContentView: View {
                         }
                     }
                     .padding(8)
-                    .background(Color(UIColor.secondarySystemBackground).opacity(0.6))
+                    .background(Color(UIColor.secondarySystemBackground).opacity(0.8))
                     .cornerRadius(8)
                     Spacer()
                 }
                 .padding(.top, 5)
                 .padding(.bottom)
             }
+            .padding(.bottom, 20)
         }
         .background(Color(UIColor.systemGroupedBackground))
     }
@@ -1003,11 +1008,11 @@ struct HealthDataCard: View {
             HStack {
                 // 图标
                 Image(systemName: icon)
-                    .font(.system(size: 18))
+                    .font(.system(size: 20))
                     .foregroundColor(.white)
-                    .frame(width: 32, height: 32)
+                    .frame(width: 36, height: 36)
                     .background(color)
-                    .cornerRadius(8)
+                    .cornerRadius(10)
                 
                 // 标题
                 Text(title)
@@ -1018,7 +1023,7 @@ struct HealthDataCard: View {
             }
             .padding(.horizontal)
             .padding(.top)
-            .padding(.bottom, 2)
+            .padding(.bottom, 8)
             
             // 分隔线
             Rectangle()
@@ -1031,16 +1036,16 @@ struct HealthDataCard: View {
                 Spacer()
                 
                 Text(value)
-                    .font(.system(size: 28, weight: .bold, design: .rounded))
+                    .font(.system(size: 32, weight: .bold, design: .rounded))
                     .foregroundColor(.primary)
-                    .padding(.vertical, 12)
+                    .padding(.vertical, 20)
                 
                 Spacer()
             }
         }
-        .background(Color(UIColor.secondarySystemBackground))
-        .cornerRadius(15)
-        .shadow(color: Color.black.opacity(0.05), radius: 5, x: 0, y: 2)
+        .background(Color(UIColor.tertiarySystemBackground))
+        .cornerRadius(16)
+        .shadow(color: Color.black.opacity(0.08), radius: 6, x: 0, y: 3)
     }
 }
 
@@ -1096,16 +1101,17 @@ struct DailyDataView<T: Numeric>: View {
                         
                         if day != sortedDays.last {
                             Divider()
-                                .padding(.leading, 65)
+                                .padding(.leading, 70)
                                 .padding(.trailing)
                         }
                     }
                 }
             }
-            .padding(.vertical, 5)
+            .padding(.vertical, 8)
         }
-        .background(Color(UIColor.secondarySystemBackground))
-        .cornerRadius(10)
+        .background(Color(UIColor.tertiarySystemBackground))
+        .cornerRadius(12)
+        .shadow(color: Color.black.opacity(0.05), radius: 4, x: 0, y: 2)
     }
 }
 
@@ -1122,12 +1128,13 @@ struct DailyDataRow<T: Numeric>: View {
             // 日期圆形背景
             ZStack {
                 Circle()
-                    .fill(Color(UIColor.tertiarySystemBackground))
-                    .frame(width: 45, height: 45)
+                    .fill(Color(UIColor.systemBackground))
+                    .frame(width: 50, height: 50)
+                    .shadow(color: Color.black.opacity(0.05), radius: 2, x: 0, y: 1)
                 
                 VStack(spacing: 0) {
                     Text(day.formatted(.dateTime.day()))
-                        .font(.system(size: 16, weight: .bold))
+                        .font(.system(size: 18, weight: .bold))
                     Text(day.formatted(.dateTime.month(.abbreviated)))
                         .font(.system(size: 12))
                         .foregroundColor(.secondary)
@@ -1149,7 +1156,7 @@ struct DailyDataRow<T: Numeric>: View {
                 .foregroundColor(.primary)
                 .padding(.trailing)
         }
-        .padding(.vertical, 8)
+        .padding(.vertical, 10)
         .contentShape(Rectangle())
     }
 }
