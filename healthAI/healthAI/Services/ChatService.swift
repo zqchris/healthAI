@@ -406,4 +406,134 @@ class ChatService: ObservableObject {
             .receive(on: DispatchQueue.main)
             .eraseToAnyPublisher()
     }
+    
+    // 新增：获取建议问题
+    func fetchSuggestedQuestions(prompt: String) async throws -> [String] {
+        guard !apiConfig.apiKey.isEmpty else {
+            throw NSError(domain: "ChatService", code: 401, userInfo: [NSLocalizedDescriptionKey: "API密钥未设置"])
+        }
+        
+        // 主线程更新状态
+        await MainActor.run {
+             self.isLoading = true
+             self.error = nil
+         }
+         
+        defer {
+            Task { @MainActor in self.isLoading = false }
+        }
+
+        let url: URL
+        let urlRequest: URLRequest
+        
+        do {
+            // 根据API类型构建请求
+            if isAnthropicAPI {
+                let claudeMessage = ClaudeCompletionRequest.ClaudeMessage(role: "user", content: [ClaudeCompletionRequest.ContentBlock(type: "text", text: prompt)])
+                let request = ClaudeCompletionRequest(
+                    model: apiConfig.model,
+                    messages: [claudeMessage],
+                    max_tokens: 150, // Keep response short
+                    stream: false,
+                    temperature: 0.7 // Slightly creative but focused
+                )
+                guard let requestUrl = URL(string: apiConfig.baseURL) else {
+                    throw NSError(domain: "ChatService", code: 400, userInfo: [NSLocalizedDescriptionKey: "无效的API URL"])
+                }
+                url = requestUrl
+                
+                guard let jsonData = try? JSONEncoder().encode(request) else {
+                    throw NSError(domain: "ChatService", code: 400, userInfo: [NSLocalizedDescriptionKey: "无法编码请求数据"])
+                }
+                
+                var mutableRequest = URLRequest(url: url)
+                mutableRequest.httpMethod = "POST"
+                mutableRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
+                mutableRequest.setValue("\(apiConfig.apiKey)", forHTTPHeaderField: "x-api-key")
+                mutableRequest.setValue("2023-06-01", forHTTPHeaderField: "anthropic-version")
+                mutableRequest.httpBody = jsonData
+                urlRequest = mutableRequest
+                print("[Claude Suggest] 发送请求到: \(url.absoluteString)")
+            } else {
+                let openaiMessage = ChatCompletionRequest.ChatRequestMessage(role: "user", content: prompt)
+                let request = ChatCompletionRequest(
+                    model: apiConfig.model,
+                    messages: [openaiMessage],
+                    stream: false,
+                    temperature: 0.7,
+                    max_tokens: 150 // Limit token usage
+                )
+                guard let requestUrl = URL(string: apiConfig.baseURL) else {
+                    throw NSError(domain: "ChatService", code: 400, userInfo: [NSLocalizedDescriptionKey: "无效的API URL"])
+                }
+                url = requestUrl
+                
+                guard let jsonData = try? JSONEncoder().encode(request) else {
+                    throw NSError(domain: "ChatService", code: 400, userInfo: [NSLocalizedDescriptionKey: "无法编码请求数据"])
+                }
+                
+                var mutableRequest = URLRequest(url: url)
+                mutableRequest.httpMethod = "POST"
+                mutableRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
+                mutableRequest.setValue("Bearer \(apiConfig.apiKey)", forHTTPHeaderField: "Authorization")
+                if let organization = apiConfig.organization, !organization.isEmpty {
+                     mutableRequest.setValue(organization, forHTTPHeaderField: "OpenAI-Organization")
+                }
+                mutableRequest.httpBody = jsonData
+                urlRequest = mutableRequest
+                print("[OpenAI Suggest] 发送请求到: \(url.absoluteString)")
+            }
+        } catch {
+            await MainActor.run { self.error = error }
+            throw error // Rethrow after setting error state
+        }
+
+        // 执行网络请求
+        let (data, response) = try await URLSession.shared.data(for: urlRequest)
+        
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw NSError(domain: "ChatService", code: 0, userInfo: [NSLocalizedDescriptionKey: "无效的HTTP响应"])
+        }
+
+        guard (200...299).contains(httpResponse.statusCode) else {
+            // Try to parse error message from response body
+            var errorMessage = "API返回错误: \(httpResponse.statusCode)"
+            if let errorResponse = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                if let apiError = errorResponse["error"] as? [String: Any], let message = apiError["message"] as? String {
+                    errorMessage = message
+                } else if let errorString = errorResponse["error"] as? String {
+                    errorMessage = errorString
+                }
+            }
+            throw NSError(domain: "APIError", code: httpResponse.statusCode, userInfo: [NSLocalizedDescriptionKey: errorMessage])
+        }
+        
+        // 解码响应并提取问题列表
+        do {
+            var responseContent: String = ""
+            if isAnthropicAPI {
+                // Decode Claude Response (assuming non-streamed response structure)
+                let decoder = JSONDecoder()
+                let claudeResponse = try decoder.decode(ClaudeCompletionResponse.self, from: data)
+                // Combine content from all text blocks
+                responseContent = claudeResponse.content.compactMap { $0.text }.joined(separator: "\n")
+            } else {
+                // Decode OpenAI Response
+                let decoder = JSONDecoder()
+                let openAIResponse = try decoder.decode(ChatCompletionResponse.self, from: data)
+                responseContent = openAIResponse.choices.first?.message.content ?? ""
+            }
+            
+            // 解析内容为问题列表 (按行分割，去除空行)
+            let questions = responseContent.split(separator: "\n")
+                                         .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                                         .filter { !$0.isEmpty }
+            
+            return questions
+            
+        } catch {
+            print("解码建议问题响应错误: \(error)")
+            throw NSError(domain: "ChatService", code: 0, userInfo: [NSLocalizedDescriptionKey: "无法解析建议问题响应: \(error.localizedDescription)"])
+        }
+    }
 } 

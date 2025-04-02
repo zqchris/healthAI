@@ -170,11 +170,11 @@ struct MainTabView: View {
             VStack(spacing: 4) {
                 Image(systemName: icon)
                     .font(.system(size: 22))
-                    .foregroundColor(isSelected ? primaryColor : .gray)
+                    .foregroundColor(isSelected ? .blue : .gray)
                 
                 Text(title)
                     .font(.system(size: 10))
-                    .foregroundColor(isSelected ? primaryColor : .gray)
+                    .foregroundColor(isSelected ? .blue : .gray)
             }
             .frame(maxWidth: .infinity)
         }
@@ -187,72 +187,126 @@ struct ProfileView: View {
     @State private var apiConfig = GPTAPIConfig.defaultConfig
     @State private var showSettings = false
     @State private var apiType = "openai"
+    @State private var showAPISettingsSheet = false
+    
+    // 引入HealthDataService以获取数据
+    @StateObject private var healthDataService = HealthDataService.shared
     
     var body: some View {
         ScrollView {
             VStack(spacing: 20) {
                 // 个人资料卡片
-                VStack(spacing: 15) {
-                    // 头像
-                    Image(systemName: "person.circle.fill")
-                        .resizable()
-                        .aspectRatio(contentMode: .fit)
-                        .frame(width: 80, height: 80)
-                        .foregroundColor(ThemeManager.shared.primaryColor)
-                    
-                    // 用户名
-                    Text("测试用户")
-                        .font(.title2)
-                        .fontWeight(.semibold)
-                    
-                    // 用户基本信息
-                    HStack(spacing: 20) {
-                        VStack {
-                            Text("年龄")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                            Text("35")
-                                .font(.headline)
-                        }
-                        
-                        Divider()
-                            .frame(height: 20)
-                        
-                        VStack {
-                            Text("身高")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                            Text("175cm")
-                                .font(.headline)
-                        }
-                        
-                        Divider()
-                            .frame(height: 20)
-                        
-                        VStack {
-                            Text("体重")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                            Text("70kg")
-                                .font(.headline)
-                        }
-                    }
-                }
-                .padding()
-                .cardStyle()
+                profileCard
                 
                 // 设置菜单
                 settingsMenuSection
                 
                 // 应用信息
                 appInfoSection
+                
+                HStack(spacing: 20) {
+                    Button(action: {
+                        showAPISettingsSheet = true
+                    }) {
+                        Label("API设置", systemImage: "key.fill")
+                            .font(.headline)
+                            .padding()
+                            .frame(maxWidth: .infinity)
+                            .background(Color.blue)
+                            .foregroundColor(.white)
+                            .cornerRadius(10)
+                    }
+                }
+                .padding(.top, 20)
+                .padding(.horizontal)
             }
             .padding()
+        }
+        .sheet(isPresented: $showAPISettingsSheet) {
+            APISettingsView(
+                apiConfig: $apiConfig,
+                showSettings: $showAPISettingsSheet,
+                apiType: $apiType,
+                onSave: saveAPISettings,
+                onUpdateType: updateAPIType
+            )
         }
         .onAppear {
             // 加载保存的API设置
             loadSavedAPISettings()
+            // 加载最新的健康数据摘要
+            healthDataService.loadHealthData()
         }
+    }
+    
+    // 个人资料卡片视图
+    private var profileCard: some View {
+        VStack(spacing: 15) {
+            // 头像
+            Image(systemName: "person.circle.fill")
+                .resizable()
+                .aspectRatio(contentMode: .fit)
+                .frame(width: 80, height: 80)
+                .foregroundColor(ThemeManager.shared.primaryColor)
+            
+            // 用户名
+            Text("健康用户") // 可以考虑未来从用户设置中获取
+                .font(.title2)
+                .fontWeight(.semibold)
+            
+            // 用户基本信息
+            HStack(spacing: 20) {
+                // 年龄
+                VStack {
+                    Text("年龄")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                    if let age = healthDataService.healthSummary?.age {
+                        Text("\(age)")
+                            .font(.headline)
+                    } else {
+                        Text("--")
+                            .font(.headline)
+                    }
+                }
+                
+                Divider()
+                    .frame(height: 20)
+                
+                // 身高
+                VStack {
+                    Text("身高")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                    if let height = healthDataService.healthSummary?.latestHeight {
+                        Text(String(format: "%.0fcm", height))
+                            .font(.headline)
+                    } else {
+                        Text("--cm")
+                            .font(.headline)
+                    }
+                }
+                
+                Divider()
+                    .frame(height: 20)
+                
+                // 体重
+                VStack {
+                    Text("体重")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                    if let weight = healthDataService.healthSummary?.averageBodyMass {
+                        Text(String(format: "%.1fkg", weight))
+                            .font(.headline)
+                    } else {
+                        Text("--kg")
+                            .font(.headline)
+                    }
+                }
+            }
+        }
+        .padding()
+        .cardStyle()
     }
     
     // 加载保存的API设置
@@ -817,131 +871,157 @@ struct SleepStagesView: View {
             VStack(alignment: .leading, spacing: 15) {
                 if let deepSleep = avgDetail.deepSleep,
                    let remSleep = avgDetail.remSleep,
-                   let coreSleep = avgDetail.coreSleep,
-                   let total = avgDetail.total, total > 0 {
+                   let coreSleep = avgDetail.coreSleep {
                     
-                    // 计算百分比
-                    let deepPercent = (deepSleep / total) * 100
-                    let remPercent = (remSleep / total) * 100
-                    let corePercent = (coreSleep / total) * 100
+                    // 计算各阶段总时长，确保有效
+                    let stagesSum = deepSleep + remSleep + coreSleep
                     
-                    // 睡眠阶段百分比指示器
-                    HStack {
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text("深度睡眠")
-                                .font(.subheadline)
-                                .foregroundColor(.primary)
-                            
-                            Text(formatDuration(deepSleep))
-                                .font(.caption)
-                                .foregroundColor(.secondary)
+                    // 只有当总和大于0时才显示百分比
+                    if stagesSum > 0 {
+                        // 修正：使用阶段总和作为分母计算百分比，而不是总睡眠时间
+                        let deepPercent = (deepSleep / stagesSum) * 100
+                        let remPercent = (remSleep / stagesSum) * 100
+                        let corePercent = (coreSleep / stagesSum) * 100
+                        
+                        // 检查百分比是否合理 - 使用Group包装print语句
+                        Group {
+                            let _ = print("睡眠阶段百分比计算 - 深度: \(deepPercent)%, REM: \(remPercent)%, 核心: \(corePercent)%, 合计: \(deepPercent + remPercent + corePercent)%")
                         }
                         
-                        Spacer()
-                        
-                        ZStack(alignment: .leading) {
-                            // 背景条
-                            RoundedRectangle(cornerRadius: 3)
-                                .foregroundColor(.gray.opacity(0.2))
-                                .frame(width: 100, height: 8)
+                        // 睡眠阶段百分比指示器
+                        HStack {
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text("深度睡眠")
+                                    .font(.subheadline)
+                                    .foregroundColor(.primary)
+                                
+                                Text(formatDuration(deepSleep))
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
                             
-                            // 填充条
-                            RoundedRectangle(cornerRadius: 3)
+                            Spacer()
+                            
+                            ZStack(alignment: .leading) {
+                                // 背景条
+                                RoundedRectangle(cornerRadius: 3)
+                                    .foregroundColor(.gray.opacity(0.2))
+                                    .frame(width: 100, height: 8)
+                                
+                                // 填充条
+                                RoundedRectangle(cornerRadius: 3)
+                                    .foregroundColor(.purple)
+                                    .frame(width: min(CGFloat(deepPercent), 100), height: 8)
+                            }
+                            
+                            Text("\(Int(deepPercent))%")
+                                .font(.system(.subheadline, design: .rounded))
+                                .fontWeight(.semibold)
                                 .foregroundColor(.purple)
-                                .frame(width: min(CGFloat(deepPercent), 100), height: 8)
+                                .frame(width: 45, alignment: .trailing)
                         }
                         
-                        Text("\(Int(deepPercent))%")
-                            .font(.system(.subheadline, design: .rounded))
-                            .fontWeight(.semibold)
-                            .foregroundColor(.purple)
-                            .frame(width: 45, alignment: .trailing)
-                    }
-                    
-                    HStack {
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text("REM睡眠")
-                                .font(.subheadline)
-                                .foregroundColor(.primary)
+                        HStack {
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text("REM睡眠")
+                                    .font(.subheadline)
+                                    .foregroundColor(.primary)
+                                
+                                Text(formatDuration(remSleep))
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
                             
-                            Text(formatDuration(remSleep))
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                        }
-                        
-                        Spacer()
-                        
-                        ZStack(alignment: .leading) {
-                            // 背景条
-                            RoundedRectangle(cornerRadius: 3)
-                                .foregroundColor(.gray.opacity(0.2))
-                                .frame(width: 100, height: 8)
+                            Spacer()
                             
-                            // 填充条
-                            RoundedRectangle(cornerRadius: 3)
+                            ZStack(alignment: .leading) {
+                                // 背景条
+                                RoundedRectangle(cornerRadius: 3)
+                                    .foregroundColor(.gray.opacity(0.2))
+                                    .frame(width: 100, height: 8)
+                                
+                                // 填充条
+                                RoundedRectangle(cornerRadius: 3)
+                                    .foregroundColor(.blue)
+                                    .frame(width: min(CGFloat(remPercent), 100), height: 8)
+                            }
+                            
+                            Text("\(Int(remPercent))%")
+                                .font(.system(.subheadline, design: .rounded))
+                                .fontWeight(.semibold)
                                 .foregroundColor(.blue)
-                                .frame(width: min(CGFloat(remPercent), 100), height: 8)
+                                .frame(width: 45, alignment: .trailing)
                         }
                         
-                        Text("\(Int(remPercent))%")
-                            .font(.system(.subheadline, design: .rounded))
-                            .fontWeight(.semibold)
-                            .foregroundColor(.blue)
-                            .frame(width: 45, alignment: .trailing)
-                    }
-                    
-                    HStack {
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text("核心睡眠")
-                                .font(.subheadline)
-                                .foregroundColor(.primary)
+                        HStack {
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text("核心睡眠")
+                                    .font(.subheadline)
+                                    .foregroundColor(.primary)
+                                
+                                Text(formatDuration(coreSleep))
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
                             
-                            Text(formatDuration(coreSleep))
+                            Spacer()
+                            
+                            ZStack(alignment: .leading) {
+                                // 背景条
+                                RoundedRectangle(cornerRadius: 3)
+                                    .foregroundColor(.gray.opacity(0.2))
+                                    .frame(width: 100, height: 8)
+                                
+                                // 填充条
+                                RoundedRectangle(cornerRadius: 3)
+                                    .foregroundColor(.teal)
+                                    .frame(width: min(CGFloat(corePercent), 100), height: 8)
+                            }
+                            
+                            Text("\(Int(corePercent))%")
+                                .font(.system(.subheadline, design: .rounded))
+                                .fontWeight(.semibold)
+                                .foregroundColor(.teal)
+                                .frame(width: 45, alignment: .trailing)
+                        }
+                        
+                        // 添加睡眠总时长显示
+                        HStack {
+                            Spacer()
+                            Text("睡眠总时长: \(formatDuration(stagesSum))")
                                 .font(.caption)
                                 .foregroundColor(.secondary)
+                            Spacer()
                         }
-                        
-                        Spacer()
-                        
-                        ZStack(alignment: .leading) {
-                            // 背景条
-                            RoundedRectangle(cornerRadius: 3)
-                                .foregroundColor(.gray.opacity(0.2))
-                                .frame(width: 100, height: 8)
-                            
-                            // 填充条
-                            RoundedRectangle(cornerRadius: 3)
-                                .foregroundColor(.teal)
-                                .frame(width: min(CGFloat(corePercent), 100), height: 8)
-                        }
-                        
-                        Text("\(Int(corePercent))%")
-                            .font(.system(.subheadline, design: .rounded))
-                            .fontWeight(.semibold)
-                            .foregroundColor(.teal)
-                            .frame(width: 45, alignment: .trailing)
+                        .padding(.top, 8)
+                    } else {
+                        showNoDataView()
                     }
                 } else {
-                    HStack {
-                        Spacer()
-                        VStack(spacing: 10) {
-                            Image(systemName: "moon.zzz")
-                                .font(.title)
-                                .foregroundColor(.secondary)
-                            
-                            Text("睡眠阶段数据不足")
-                                .font(.subheadline)
-                                .foregroundColor(.secondary)
-                        }
-                        .padding(.vertical, 20)
-                        Spacer()
-                    }
+                    showNoDataView()
                 }
             }
             .padding()
         }
         .background(Color(UIColor.secondarySystemBackground))
         .cornerRadius(10)
+    }
+    
+    private func showNoDataView() -> some View {
+        HStack {
+            Spacer()
+            VStack(spacing: 10) {
+                Image(systemName: "moon.zzz")
+                    .font(.title)
+                    .foregroundColor(.secondary)
+                
+                Text("睡眠阶段数据不足")
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+            }
+            .padding(.vertical, 20)
+            Spacer()
+        }
     }
     
     // 计算平均睡眠阶段数据
@@ -1058,7 +1138,14 @@ struct DailyDataView<T: Numeric>: View {
     // 将格式化器从body内部移到外部
     private var dateFormatter: DateFormatter {
         let formatter = DateFormatter()
-        formatter.dateFormat = "MM月dd日"
+        formatter.dateFormat = "d"
+        formatter.locale = Locale(identifier: "zh_CN")
+        return formatter
+    }
+    
+    private var monthFormatter: DateFormatter {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "MMM"
         formatter.locale = Locale(identifier: "zh_CN")
         return formatter
     }
@@ -1086,7 +1173,8 @@ struct DailyDataView<T: Numeric>: View {
                 .padding(.horizontal)
             
             // 数据内容
-            let sortedDays = data.keys.sorted()
+            // 按日期降序排序，显示最新的在前面
+            let sortedDays = data.keys.sorted(by: >)
             
             VStack(spacing: 0) {
                 ForEach(sortedDays, id: \.self) { day in
@@ -1095,6 +1183,7 @@ struct DailyDataView<T: Numeric>: View {
                             day: day,
                             value: value,
                             dateFormatter: dateFormatter,
+                            monthFormatter: monthFormatter,
                             weekDayFormatter: weekDayFormatter,
                             valueFormatter: valueFormatter
                         )
@@ -1120,44 +1209,42 @@ struct DailyDataRow<T: Numeric>: View {
     let day: Date
     let value: T
     let dateFormatter: DateFormatter
+    let monthFormatter: DateFormatter
     let weekDayFormatter: DateFormatter
     let valueFormatter: (T) -> String
     
     var body: some View {
         HStack(spacing: 15) {
-            // 日期圆形背景
-            ZStack {
-                Circle()
-                    .fill(Color(UIColor.systemBackground))
-                    .frame(width: 50, height: 50)
-                    .shadow(color: Color.black.opacity(0.05), radius: 2, x: 0, y: 1)
+            // 日期显示
+            VStack(alignment: .center, spacing: 2) {
+                Text(dateFormatter.string(from: day))
+                    .font(.headline)
+                    .fontWeight(.medium)
+                    .foregroundColor(.primary)
                 
-                VStack(spacing: 0) {
-                    Text(day.formatted(.dateTime.day()))
-                        .font(.system(size: 18, weight: .bold))
-                    Text(day.formatted(.dateTime.month(.abbreviated)))
-                        .font(.system(size: 12))
-                        .foregroundColor(.secondary)
-                }
+                Text(monthFormatter.string(from: day))
+                    .font(.caption)
+                    .foregroundColor(.secondary)
             }
+            .frame(width: 44, height: 44)
+            .background(Color(UIColor.secondarySystemBackground))
+            .clipShape(Circle())
             .padding(.leading)
             
-            VStack(alignment: .leading, spacing: 2) {
-                Text(weekDayFormatter.string(from: day))
-                    .font(.subheadline)
-                    .foregroundColor(.primary)
-            }
+            // 星期几
+            Text(weekDayFormatter.string(from: day))
+                .font(.subheadline)
+                .foregroundColor(.primary)
             
             Spacer()
             
+            // 数据值
             Text(valueFormatter(value))
-                .font(.system(.body, design: .rounded))
-                .fontWeight(.semibold)
-                .foregroundColor(.primary)
+                .font(.subheadline)
+                .foregroundColor(.secondary)
                 .padding(.trailing)
         }
-        .padding(.vertical, 10)
-        .contentShape(Rectangle())
+        .padding(.vertical, 12)
     }
 }
 
@@ -1351,16 +1438,14 @@ struct BloodPressureDataSection: View {
             
             // 详细血压数据
             if let dailyBloodPressure = summary.dailyBloodPressure, !dailyBloodPressure.isEmpty {
+                // 确保传递给 DailyDataView 的 data 是非可选的
+                let systolicData = dailyBloodPressure.mapValues { $0.systolic }
                 DailyDataView(
-                    title: "每日血压",
-                    data: dailyBloodPressure.mapValues { $0.systolic },
-                    valueFormatter: { bp in
-                        if let systolic = summary.dailyBloodPressure?[bp.key]?.systolic,
-                           let diastolic = summary.dailyBloodPressure?[bp.key]?.diastolic {
-                            return "\(Int(systolic))/\(Int(diastolic)) mmHg"
-                        } else {
-                            return "无数据"
-                        }
+                    title: "每日血压 (收缩压)",
+                    data: systolicData, // 传递 [Date: Double]
+                    valueFormatter: { bp in // bp 现在是 Double (非可选)
+                        // 直接格式化非可选的 bp 值
+                        return "\(Int(bp)) mmHg"
                     }
                 )
             }

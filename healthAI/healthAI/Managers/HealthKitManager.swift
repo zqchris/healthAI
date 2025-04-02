@@ -88,6 +88,10 @@ struct HealthDataSummary: Equatable {
     var totalDietaryEnergy: Double?
     var totalDietaryWater: Double?
     
+    // 个人信息
+    var age: Int?
+    var latestHeight: Double?
+    
     // 按天数据
     var dailySleep: [Date: TimeInterval]?
     var sleepDetails: [Date: SleepDetail]?  // 每日详细睡眠数据
@@ -129,7 +133,9 @@ struct HealthDataSummary: Equatable {
                lhs.sleepDuration == rhs.sleepDuration &&
                lhs.averageSleepDuration == rhs.averageSleepDuration &&
                lhs.startDate == rhs.startDate &&
-               lhs.endDate == rhs.endDate
+               lhs.endDate == rhs.endDate &&
+               lhs.age == rhs.age &&
+               lhs.latestHeight == rhs.latestHeight
     }
 }
 
@@ -159,6 +165,24 @@ class HealthKitManager: ObservableObject {
 
         // 安全地定义要读取的数据类型集合
         var readTypesArray: [HKObjectType] = []
+        
+        // 添加个人特征数据类型
+        if let dateOfBirthType = HKObjectType.characteristicType(forIdentifier: .dateOfBirth) {
+            readTypesArray.append(dateOfBirthType)
+            print("HealthKitManager: 添加出生日期数据类型")
+        }
+        if let biologicalSexType = HKObjectType.characteristicType(forIdentifier: .biologicalSex) {
+            readTypesArray.append(biologicalSexType)
+            print("HealthKitManager: 添加生理性别数据类型")
+        }
+        if let heightType = HKObjectType.quantityType(forIdentifier: .height) {
+            readTypesArray.append(heightType)
+            print("HealthKitManager: 添加身高数据类型")
+        }
+        if let bodyMassType = HKObjectType.quantityType(forIdentifier: .bodyMass) {
+            readTypesArray.append(bodyMassType)
+            print("HealthKitManager: 添加体重数据类型")
+        }
         
         // 活动与运动数据类型
         if let stepType = HKObjectType.quantityType(forIdentifier: .stepCount) {
@@ -236,11 +260,6 @@ class HealthKitManager: ObservableObject {
         if let bodyTemperatureType = HKObjectType.quantityType(forIdentifier: .bodyTemperature) {
             readTypesArray.append(bodyTemperatureType)
             print("HealthKitManager: 添加体温数据类型")
-        }
-        
-        if let bodyMassType = HKObjectType.quantityType(forIdentifier: .bodyMass) {
-            readTypesArray.append(bodyMassType)
-            print("HealthKitManager: 添加体重数据类型")
         }
         
         if let bodyMassIndexType = HKObjectType.quantityType(forIdentifier: .bodyMassIndex) {
@@ -360,10 +379,29 @@ class HealthKitManager: ObservableObject {
         var totalHeartRateSamples: Double = 0
         var totalHeartRateCount: Int = 0
         
+        // 新增：获取年龄和身高
+        let age = try? getAge()
+        let latestHeightSample = try? await getLatestHeight()
+        let latestHeight = latestHeightSample?.quantity.doubleValue(for: HKUnit.meterUnit(with: .centi))
+        
+        // 处理睡眠数据（声明移至此处）
+        var totalSleep: TimeInterval? = nil
+        var dailySleep: [Date: TimeInterval] = [:]
+        var averageSleepDuration: TimeInterval? = nil
+        var sleepDetails: [Date: SleepDetail] = [:]
+        var totalSleepDetail = SleepDetail()
+        var daysWithDetailedData = 0
+        var averageSleepDetail: SleepDetail? = nil // 声明移到if块外部
+        
         // 抓取睡眠数据
         var sleepData: [HKSample]? = nil
         do {
-            sleepData = try await self.fetchCategoryData(identifier: .sleepAnalysis, predicate: predicate)
+            // 使用更宽松的查询范围，增加获取到睡眠数据的机会
+            // 睡眠数据可能是从昨晚到今天早上，需要考虑这种情况
+            let extendedStartDate = calendar.date(byAdding: .day, value: -1, to: startDate) ?? startDate
+            let extendedPredicate = HKQuery.predicateForSamples(withStart: extendedStartDate, end: endDate, options: .strictStartDate)
+            
+            sleepData = try await self.fetchCategoryData(identifier: .sleepAnalysis, predicate: extendedPredicate)
             print("获取睡眠数据: \(sleepData?.count ?? 0) 条记录")
         } catch {
             print("获取睡眠数据失败: \(error.localizedDescription)")
@@ -445,13 +483,6 @@ class HealthKitManager: ObservableObject {
         let averageHeartRate = totalHeartRateCount > 0 ? totalHeartRateSamples / Double(totalHeartRateCount) : nil
         
         // 处理睡眠数据
-        var totalSleep: TimeInterval? = nil
-        var dailySleep: [Date: TimeInterval] = [:]
-        var averageSleepDuration: TimeInterval? = nil
-        var sleepDetails: [Date: SleepDetail] = [:]
-        var totalSleepDetail = SleepDetail()
-        var daysWithDetailedData = 0
-
         if let sleepSamples = sleepData, !sleepSamples.isEmpty {
             // 将睡眠样本按日期分组
             let calendar = Calendar.current
@@ -561,18 +592,16 @@ class HealthKitManager: ObservableObject {
                         
                         // 按类型和时间排序分组样本
                         let inBedSamples = allSamples.filter { 
-                            $0.value == HKCategoryValueSleepAnalysis.inBed.rawValue &&
-                            // 只获取夜间睡眠数据（下午6点到次日上午11点）
-                            (calendar.component(.hour, from: $0.startDate) >= 18 || 
-                             calendar.component(.hour, from: $0.startDate) < 11)
+                            $0.value == HKCategoryValueSleepAnalysis.inBed.rawValue
+                            // 放宽时间限制，允许获取更多历史数据
+                            // 不再限制只获取夜间睡眠数据
                         }.sorted { $0.startDate < $1.startDate }
                         
                         let asleepSamples = allSamples.filter { 
                             ($0.value == HKCategoryValueSleepAnalysis.asleep.rawValue ||
-                            $0.value == HKCategoryValueSleepAnalysis.asleepUnspecified.rawValue) &&
-                            // 只获取夜间睡眠数据（下午6点到次日上午11点）
-                            (calendar.component(.hour, from: $0.startDate) >= 18 || 
-                             calendar.component(.hour, from: $0.startDate) < 11)
+                            $0.value == HKCategoryValueSleepAnalysis.asleepUnspecified.rawValue)
+                            // 放宽时间限制，允许获取更多历史数据
+                            // 不再限制只获取夜间睡眠数据
                         }.sorted { $0.startDate < $1.startDate }
                         
                         var deepSleepSamples: [HKCategorySample] = []
@@ -582,31 +611,27 @@ class HealthKitManager: ObservableObject {
                         
                         if #available(iOS 16.0, *) {
                             deepSleepSamples = allSamples.filter { 
-                                $0.value == HKCategoryValueSleepAnalysis.asleepDeep.rawValue &&
-                                // 只获取夜间睡眠数据（下午6点到次日上午11点）
-                                (calendar.component(.hour, from: $0.startDate) >= 18 || 
-                                 calendar.component(.hour, from: $0.startDate) < 11)
+                                $0.value == HKCategoryValueSleepAnalysis.asleepDeep.rawValue
+                                // 放宽时间限制，允许获取更多历史数据
+                                // 不再限制只获取夜间睡眠数据
                             }.sorted { $0.startDate < $1.startDate }
                             
                             remSleepSamples = allSamples.filter { 
-                                $0.value == HKCategoryValueSleepAnalysis.asleepREM.rawValue &&
-                                // 只获取夜间睡眠数据（下午6点到次日上午11点）
-                                (calendar.component(.hour, from: $0.startDate) >= 18 || 
-                                 calendar.component(.hour, from: $0.startDate) < 11)
+                                $0.value == HKCategoryValueSleepAnalysis.asleepREM.rawValue
+                                // 放宽时间限制，允许获取更多历史数据
+                                // 不再限制只获取夜间睡眠数据
                             }.sorted { $0.startDate < $1.startDate }
                             
                             coreSleepSamples = allSamples.filter { 
-                                $0.value == HKCategoryValueSleepAnalysis.asleepCore.rawValue &&
-                                // 只获取夜间睡眠数据（下午6点到次日上午11点）
-                                (calendar.component(.hour, from: $0.startDate) >= 18 || 
-                                 calendar.component(.hour, from: $0.startDate) < 11)
+                                $0.value == HKCategoryValueSleepAnalysis.asleepCore.rawValue
+                                // 放宽时间限制，允许获取更多历史数据
+                                // 不再限制只获取夜间睡眠数据
                             }.sorted { $0.startDate < $1.startDate }
                             
                             awakeSamples = allSamples.filter { 
-                                $0.value == HKCategoryValueSleepAnalysis.awake.rawValue &&
-                                // 只获取夜间睡眠数据（下午6点到次日上午11点）
-                                (calendar.component(.hour, from: $0.startDate) >= 18 || 
-                                 calendar.component(.hour, from: $0.startDate) < 11)
+                                $0.value == HKCategoryValueSleepAnalysis.awake.rawValue
+                                // 放宽时间限制，允许获取更多历史数据
+                                // 不再限制只获取夜间睡眠数据
                             }.sorted { $0.startDate < $1.startDate }
                         }
                         
@@ -732,6 +757,10 @@ class HealthKitManager: ObservableObject {
                         dayDetail.startTime = earliestStart
                         dayDetail.endTime = latestEnd
                         
+                        // --- 添加调试日志 ---
+                        print("[\(dayString)] 处理完成: 合并样本数=\(allSamples.count), 在床时长=\(formatDuration(inBedDuration)), 睡眠时长=\(formatDuration(asleepDuration))")
+                        // ------
+                        
                         // 保存每日数据
                         if asleepDuration > 0 {
                             dailySleep[dayStart] = asleepDuration
@@ -739,7 +768,21 @@ class HealthKitManager: ObservableObject {
                             totalDuration += asleepDuration
                             daysWithData += 1
                             
-                            print("成功保存 \(dayString) 的睡眠数据: \(Int(asleepDuration/3600))小时\(Int((asleepDuration.truncatingRemainder(dividingBy: 3600))/60))分钟")
+                            print("[\(dayString)] ✅ 数据有效 (时长>0)，已添加到 dailySleep 和 sleepDetails")
+                            
+                            // 调试：打印睡眠阶段数据
+                            if hasDetailedData {
+                                print("[\(dayString)] 睡眠阶段: 深度=\(formatDuration(deepSleepDuration)), REM=\(formatDuration(remSleepDuration)), 核心=\(formatDuration(coreSleepDuration))")
+                                
+                                // 检查阶段总和与总睡眠时间的关系
+                                let stagesSum = deepSleepDuration + remSleepDuration + coreSleepDuration
+                                if stagesSum > 0 {
+                                    let deepPercent = (deepSleepDuration / stagesSum) * 100
+                                    let remPercent = (remSleepDuration / stagesSum) * 100
+                                    let corePercent = (coreSleepDuration / stagesSum) * 100
+                                    print("[\(dayString)] 阶段百分比: 深度=\(Int(deepPercent))%, REM=\(Int(remPercent))%, 核心=\(Int(corePercent))%, 合计=\(Int(deepPercent + remPercent + corePercent))%")
+                                }
+                            }
                             
                             // 更新dailyHealthData中的睡眠数据
                             if let index = dailyHealthData.firstIndex(where: { calendar.isDate($0.date, inSameDayAs: dayStart) }) {
@@ -757,7 +800,7 @@ class HealthKitManager: ObservableObject {
                                 )
                             }
                         } else {
-                            print("未能获取到 \(dayString) 的睡眠数据: 睡眠持续时间为0")
+                            print("[\(dayString)] ❌ 数据无效 (时长<=0)，未添加")
                         }
                     }
                 }
@@ -771,8 +814,8 @@ class HealthKitManager: ObservableObject {
                 print("平均每日睡眠时间: \(averageSleepDuration ?? 0) 秒, 数据天数: \(daysWithData)")
             }
             
-            // 计算平均睡眠详情
-            var averageSleepDetail: SleepDetail? = nil
+            // 计算平均睡眠详情 - (声明已移到外部)
+            // var averageSleepDetail: SleepDetail? = nil
             if daysWithDetailedData > 0 {
                 averageSleepDetail = calculateAverageSleepDetail(
                     totalDetail: totalSleepDetail, 
@@ -804,13 +847,48 @@ class HealthKitManager: ObservableObject {
             totalActiveEnergy: totalActiveEnergy,
             sleepDuration: totalSleep,
             averageSleepDuration: averageSleepDuration,
+            averageRestingHeartRate: nil,
+            averageHeartRateVariability: nil,
+            averageRespiratoryRate: nil,
+            averageOxygenSaturation: nil,
+            averageBloodPressureSystolic: nil,
+            averageBloodPressureDiastolic: nil,
+            averageBodyTemperature: nil,
+            totalDistanceWalkingRunning: nil,
+            totalFlightsClimbed: nil,
+            totalBasalEnergy: nil,
+            totalExerciseTime: nil,
+            totalStandTime: nil,
+            averageBodyMass: nil,
+            averageBodyMassIndex: nil,
+            averageBodyFatPercentage: nil,
+            totalDietaryEnergy: nil,
+            totalDietaryWater: nil,
+            age: age,
+            latestHeight: latestHeight,
             dailySleep: dailySleep,
             sleepDetails: sleepDetails,
-            averageSleepDetail: averageSleepDuration != nil ? totalSleepDetail : nil,
+            averageSleepDetail: averageSleepDetail,
             dailyData: dailyHealthData,
             dailySteps: dailySteps,
             dailyActiveEnergy: dailyActiveEnergy,
             dailyHeartRate: dailyHeartRate,
+            dailyDistanceWalkingRunning: nil,
+            dailyFlightsClimbed: nil,
+            dailyBasalEnergy: nil,
+            dailyExerciseTime: nil,
+            dailyStandTime: nil,
+            dailyRestingHeartRate: nil,
+            dailyHeartRateVariability: nil,
+            dailyRespiratoryRate: nil,
+            dailyOxygenSaturation: nil,
+            dailyBloodPressure: nil,
+            dailyBodyTemperature: nil,
+            dailyBodyMass: nil,
+            dailyBodyMassIndex: nil,
+            dailyBodyFatPercentage: nil,
+            dailyDietaryEnergy: nil,
+            dailyDietaryWater: nil,
             startDate: startDate,
             endDate: endDate
         )
@@ -1172,9 +1250,24 @@ class HealthKitManager: ObservableObject {
     // 辅助函数：计算区间总时长
     private func calculateTotalDuration(from intervals: [(start: Date, end: Date)]) -> TimeInterval {
         intervals.reduce(0) { total, interval in
-            total + interval.end.timeIntervalSince(interval.start)
+            // 添加检查，避免负时长
+            let duration = interval.end.timeIntervalSince(interval.start)
+            return total + max(0, duration)
         }
     }
+
+    // --- 新增：辅助格式化 Duration (用于调试) ---
+    private func formatDuration(_ duration: TimeInterval?) -> String {
+        guard let duration = duration, duration > 0 else { return "0分钟" }
+        let hours = Int(duration / 3600)
+        let minutes = Int((duration.truncatingRemainder(dividingBy: 3600)) / 60)
+        if hours > 0 {
+            return "\(hours)小时\(minutes)分钟"
+        } else {
+            return "\(minutes)分钟"
+        }
+    }
+    // ------
 
     // 辅助函数：更新总体睡眠详情（用于计算平均值）
     private func updateTotalSleepDetail(total: inout SleepDetail, dayDetail: SleepDetail) {
@@ -1300,6 +1393,54 @@ class HealthKitManager: ObservableObject {
         }
         
         return averageDetail
+    }
+
+    // 新增：获取出生日期并计算年龄
+    private func getAge() throws -> Int? {
+        guard let dateOfBirth = try? healthStore.dateOfBirthComponents() else {
+            print("无法获取出生日期")
+            return nil
+        }
+        
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: Date())
+        guard let birthdayThisYear = calendar.date(byAdding: .year, value: 0, to: dateOfBirth.date ?? Date()) else { // 假设出生日期有效
+             return nil // 处理日期创建失败的情况
+        }
+        
+        let ageComponents = calendar.dateComponents([.year], from: dateOfBirth.date!, to: today)
+        
+        return ageComponents.year
+    }
+    
+    // 新增：获取最新的身高数据
+    private func getLatestHeight() async throws -> HKQuantitySample? {
+        guard let heightType = HKObjectType.quantityType(forIdentifier: .height) else {
+            throw NSError(domain: "com.yourapp.healthAI", code: 8, userInfo: [NSLocalizedDescriptionKey: "无法获取身高类型"])
+        }
+        
+        let sortDescriptor = NSSortDescriptor(key: HKSampleSortIdentifierEndDate, ascending: false)
+        let query = HKSampleQuery(sampleType: heightType, predicate: nil, limit: 1, sortDescriptors: [sortDescriptor]) { _, samples, error in
+             // 处理查询结果或错误
+             if let error = error {
+                 print("获取身高数据失败: \(error.localizedDescription)")
+             }
+             // else if let samples = samples as? [HKQuantitySample], let latestHeight = samples.first {
+                 // print("获取到最新身高: \(latestHeight)")
+             // }
+        }
+        
+        // 使用 async/await 包装查询
+        return try await withCheckedThrowingContinuation { continuation in
+            let query = HKSampleQuery(sampleType: heightType, predicate: nil, limit: 1, sortDescriptors: [sortDescriptor]) { _, samples, error in
+                if let error = error {
+                    continuation.resume(throwing: error)
+                } else {
+                    continuation.resume(returning: samples?.first as? HKQuantitySample)
+                }
+            }
+            healthStore.execute(query)
+        }
     }
 } 
 

@@ -1,24 +1,5 @@
 import SwiftUI
 
-// 卡片样式扩展
-extension View {
-    func cardStyle() -> some View {
-        self
-            .background(Color(UIColor.tertiarySystemBackground))
-            .cornerRadius(16)
-            .shadow(color: Color.black.opacity(0.08), radius: 6, x: 0, y: 3)
-    }
-    
-    func primaryButtonStyle() -> some View {
-        self
-            .padding(.horizontal, 24)
-            .padding(.vertical, 12)
-            .background(Color.blue)
-            .foregroundColor(.white)
-            .cornerRadius(10)
-    }
-}
-
 // 加载中视图
 struct LoadingView: View {
     var body: some View {

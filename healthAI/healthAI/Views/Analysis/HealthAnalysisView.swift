@@ -194,7 +194,7 @@ struct HealthScoreCard: View {
     
     // 根据分数返回颜色
     private var scoreColor: Color {
-        ThemeManager.shared.DataColors.healthScore(score)
+        ThemeManager.DataColors.healthScore(score)
     }
     
     // 根据分数返回评价
@@ -347,7 +347,7 @@ struct ActivityAnalysisCard: View {
         }
     }
     
-    // 计算步数趋势
+    // 计算步数趋势：比较前后时间段的平均步数
     private func calculateStepTrend(_ dailySteps: [Date: Double]) -> (description: String, color: Color, icon: String) {
         let sortedData = dailySteps.sorted(by: { $0.key < $1.key })
         
@@ -550,7 +550,7 @@ struct SleepAnalysisCard: View {
         .cardStyle()
     }
     
-    // 计算平均睡眠详情
+    // 计算平均睡眠详情：汇总所有日期的睡眠数据并计算各项指标的平均值
     private func calculateAverageSleepDetail(_ sleepDetails: [Date: SleepDetail]) -> SleepDetail? {
         var result = SleepDetail()
         var asleepCount = 0
@@ -702,7 +702,7 @@ struct SleepAnalysisCard: View {
         }
     }
     
-    // 格式化持续时间
+    // 格式化持续时间：将 TimeInterval 转换为 "X小时Y分钟" 格式的字符串
     private func formatDuration(_ duration: TimeInterval) -> String {
         let hours = Int(duration) / 3600
         let minutes = (Int(duration) % 3600) / 60
@@ -789,7 +789,7 @@ struct HeartRateAnalysisCard: View {
         }
     }
     
-    // 心率风险评估
+    // 心率风险评估：根据静息心率提供健康状况描述
     private func heartRateRiskAssessment(_ rate: Double) -> String {
         switch rate {
         case 0..<50:
@@ -884,7 +884,7 @@ struct HealthSummaryCard: View {
         .cardStyle()
     }
     
-    // 生成健康总结
+    // 生成健康总结：根据各项健康指标（评分、步数、睡眠、心率）生成一段综合性的描述文字
     private func generateHealthSummary() -> String {
         var summaryParts: [String] = []
         
@@ -941,7 +941,7 @@ struct HealthSummaryCard: View {
         return summaryParts.joined(separator: " ")
     }
     
-    // 生成健康建议
+    // 生成健康建议：根据各项健康指标的具体数值，生成个性化的改善建议列表
     private func generateRecommendations() -> [String] {
         var recommendations: [String] = []
         
@@ -1006,7 +1006,7 @@ struct HealthSummaryCard: View {
         return recommendations
     }
     
-    // 计算平均睡眠详情
+    // 计算平均睡眠详情（此为 HealthSummaryCard 内部版本，仅关注总睡眠和深度睡眠用于推荐）
     private func calculateAverageSleepDetail(_ sleepDetails: [Date: SleepDetail]) -> SleepDetail? {
         var result = SleepDetail()
         var asleepCount = 0

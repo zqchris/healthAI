@@ -4,8 +4,8 @@ import Foundation
 struct ChatMessage: Identifiable, Codable {
     let id: UUID
     let role: MessageRole
-    let content: String
-    let timestamp: Date
+    var content: String
+    var timestamp: Date
     
     init(id: UUID = UUID(), role: MessageRole, content: String, timestamp: Date = Date()) {
         self.id = id

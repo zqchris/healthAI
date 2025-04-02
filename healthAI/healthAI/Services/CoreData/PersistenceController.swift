@@ -287,8 +287,8 @@ class PersistenceController {
                     let healthData = DailyHealthData(
                         date: result.date!,
                         stepCount: result.stepCount,
-                        heartRate: result.heartRate,
                         activeEnergy: result.activeEnergy,
+                        heartRate: result.heartRate,
                         sleepDetail: sleepDetail
                     )
                     

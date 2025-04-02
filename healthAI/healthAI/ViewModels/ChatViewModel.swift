@@ -15,6 +15,9 @@ class ChatViewModel: ObservableObject {
     @Published var errorMessage: String?
     @Published var apiType: String = "openai" // 默认为OpenAI
     
+    // Add state for suggested questions
+    @Published var suggestedQuestions: [String] = ["帮我分析健康数据", "如何改善睡眠质量？"] // Default questions
+    
     private var chatService: ChatService
     private var cancellables = Set<AnyCancellable>()
     
@@ -22,6 +25,9 @@ class ChatViewModel: ObservableObject {
     private let healthKitManager = HealthKitManager()
     // 存储获取到的健康数据 System Prompt
     private var healthDataSystemPrompt: String? = nil
+
+    // Observe HealthDataService for summary updates
+    @ObservedObject private var healthDataService = HealthDataService.shared
 
     init(chatService: ChatService = ChatService()) {
         self.chatService = chatService
@@ -44,38 +50,51 @@ class ChatViewModel: ObservableObject {
         Task {
             await fetchAndPrepareHealthData()
         }
+
+        // Add initial welcome message if chat is empty
+        if messages.filter({ $0.role != .system }).isEmpty {
+            if apiConfig.apiKey.isEmpty {
+                messages.append(ChatMessage(role: .assistant, content: "API密钥未设置，请在设置中配置您的API密钥。配置完成后，您可以开始提问。"))
+                errorMessage = "API密钥未设置，请在设置中配置您的API密钥"
+            } else {
+                messages.append(ChatMessage(role: .assistant, content: "已加载您的健康数据，您可以开始提问了。"))
+            }
+        }
+        
+        // Observe health summary changes
+        observeHealthSummary()
     }
     
     // 加载保存的设置
     private func loadSavedSettings() {
-        if UserDefaults.standard.string(forKey: "api_key") != nil {
-            let savedKey = UserDefaults.standard.string(forKey: "api_key") ?? ""
-            let savedBaseURL = UserDefaults.standard.string(forKey: "base_url") ?? "https://api.openai.com/v1/chat/completions"
-            let savedOrg = UserDefaults.standard.string(forKey: "organization")
-            let savedType = UserDefaults.standard.string(forKey: "api_type") ?? "openai"
-            
-            // 使用存储的API类型，不再自动判断
-            apiType = savedType
-            
-            if apiType == "anthropic" {
-                apiConfig = GPTAPIConfig(
-                    apiKey: savedKey,
-                    model: "claude-3-opus-20240229",
-                    baseURL: savedBaseURL,
-                    organization: savedOrg
-                )
-            } else {
-                apiConfig = GPTAPIConfig(
-                    apiKey: savedKey,
-                    model: "gpt-4o",
-                    baseURL: savedBaseURL,
-                    organization: savedOrg
-                )
-            }
-            
-            // 传递当前API类型
-            chatService.updateConfig(apiConfig: apiConfig, apiType: apiType)
+        let savedKey = UserDefaults.standard.string(forKey: "api_key") ?? ""
+        let savedBaseURL = UserDefaults.standard.string(forKey: "base_url") ?? "https://api.openai.com/v1/chat/completions"
+        let savedOrg = UserDefaults.standard.string(forKey: "organization")
+        let savedType = UserDefaults.standard.string(forKey: "api_type") ?? "openai"
+        
+        print("加载API设置 - API Key: \(savedKey.isEmpty ? "未设置" : "已设置"), 类型: \(savedType)")
+        
+        // 使用存储的API类型，不再自动判断
+        apiType = savedType
+        
+        if apiType == "anthropic" {
+            apiConfig = GPTAPIConfig(
+                apiKey: savedKey,
+                model: "claude-3-opus-20240229",
+                baseURL: savedBaseURL,
+                organization: savedOrg
+            )
+        } else {
+            apiConfig = GPTAPIConfig(
+                apiKey: savedKey,
+                model: "gpt-4o",
+                baseURL: savedBaseURL,
+                organization: savedOrg
+            )
         }
+        
+        // 传递当前API类型
+        chatService.updateConfig(apiConfig: apiConfig, apiType: apiType)
     }
     
     // 发送消息
@@ -85,7 +104,9 @@ class ChatViewModel: ObservableObject {
         // 清除之前的错误
         errorMessage = nil
         
-        let userMessage = ChatMessage(role: .user, content: inputMessage)
+        // 创建用户消息并使用当前时间作为时间戳
+        let userMessageTimestamp = Date()
+        let userMessage = ChatMessage(role: .user, content: inputMessage, timestamp: userMessageTimestamp)
         messages.append(userMessage)
         
         // 清空输入并开始响应
@@ -112,42 +133,74 @@ class ChatViewModel: ObservableObject {
         // 添加历史消息
         apiMessages.append(contentsOf: messages)
         
-        // 在开始AI回复前，先创建AI响应的消息占位符
-        let responseId = UUID()
-        let assistantMessage = ChatMessage(id: responseId, role: .assistant, content: "")
-        messages.append(assistantMessage)
+        // 移除预设的时间戳，使用实际接收响应时的时间
         
         // 发送API请求
         chatService.sendStreamingChatRequest(
             messages: apiMessages,
             onReceive: { [weak self] newContent in
                 guard let self = self else { return }
-                self.currentResponse += newContent
                 
-                // 查找并更新已存在的AI回复消息，避免创建新的气泡
-                if let index = self.messages.firstIndex(where: { $0.id == responseId }) {
-                    let updatedMessage = ChatMessage(id: responseId, role: .assistant, content: self.currentResponse, timestamp: self.messages[index].timestamp)
-                    self.messages[index] = updatedMessage
-                }
+                // 使用打字机效果更新响应，使用实际的时间戳
+                self.processIncomingResponse(newContent)
             },
             onComplete: { [weak self] in
                 guard let self = self else { return }
                 self.isTyping = false
                 
                 // 检查AI是否有回复内容
-                if self.currentResponse.isEmpty {
+                if self.currentResponse.isEmpty && self.errorMessage == nil {
                     // 如果没有回复内容且没有已知错误，显示一个通用错误
-                    if self.errorMessage == nil {
-                        self.errorMessage = "无法从API获取响应，请检查您的API设置和网络连接。"
-                    }
-                    
-                    // 移除空的回复消息
-                    if let index = self.messages.firstIndex(where: { $0.id == responseId }) {
-                        self.messages.remove(at: index)
-                    }
+                    self.errorMessage = "无法从API获取响应，请检查您的API设置和网络连接。"
                 }
             }
         )
+    }
+    
+    // 修改处理打字机效果的方法，确保安全更新消息内容，并使用实际时间戳
+    private func processIncomingResponse(_ newContent: String) {
+        DispatchQueue.main.async {
+            // 更新当前累积的响应
+            self.currentResponse += newContent
+            
+            // 按照时间戳从后向前查找最后一条AI消息
+            let sortedMessages = self.messages.sorted(by: { $0.timestamp < $1.timestamp })
+            if let lastIndex = sortedMessages.lastIndex(where: { $0.role == .assistant }) {
+                // 找到对应的真实索引
+                if let realIndex = self.messages.firstIndex(where: { $0.id == sortedMessages[lastIndex].id }) {
+                    // 安全地更新现有消息
+                    self.messages[realIndex].content = self.currentResponse
+                    
+                    // 重要：确保AI响应时间戳总是在最后一条用户消息之后
+                    if let lastUserMessage = self.messages.filter({ $0.role == .user }).sorted(by: { $0.timestamp < $1.timestamp }).last {
+                        // 确保AI响应时间总是比最后一条用户消息晚至少1秒
+                        let currentTime = Date()
+                        let userTime = lastUserMessage.timestamp
+                        // 如果当前时间早于或等于用户消息时间，设置为用户消息时间+1秒
+                        if currentTime <= userTime {
+                            self.messages[realIndex].timestamp = userTime.addingTimeInterval(1)
+                        } else {
+                            self.messages[realIndex].timestamp = currentTime
+                        }
+                    }
+                }
+            } else {
+                // 如果没有已有的AI回复消息，创建一个新的
+                // 重要：确保时间戳总是在最后一条用户消息之后
+                var timestamp = Date()
+                if let lastUserMessage = self.messages.filter({ $0.role == .user }).sorted(by: { $0.timestamp < $1.timestamp }).last {
+                    // 如果当前时间早于或等于用户消息时间，设置为用户消息时间+1秒
+                    if timestamp <= lastUserMessage.timestamp {
+                        timestamp = lastUserMessage.timestamp.addingTimeInterval(1)
+                    }
+                }
+                
+                let assistantMessage = ChatMessage(role: .assistant, content: self.currentResponse, timestamp: timestamp)
+                self.messages.append(assistantMessage)
+                
+                print("消息时间戳 - 用户: \(self.messages.filter { $0.role == .user }.last?.timestamp ?? Date()) - AI: \(assistantMessage.timestamp)")
+            }
+        }
     }
     
     // 添加系统消息
@@ -285,5 +338,90 @@ class ChatViewModel: ObservableObject {
             print("ChatViewModel: 处理健康数据过程中出现未捕获的错误: \(error)")
             // 即使出错，应用也应继续工作
         }
+    }
+
+    // Function to observe health summary
+    private func observeHealthSummary() {
+        healthDataService.$healthSummary
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] summary in
+                guard let self = self, let summary = summary else { return }
+                // Trigger generation when summary is available/updated
+                Task {
+                    await self.generateSuggestedQuestions(summary: summary)
+                }
+            }
+            .store(in: &cancellables)
+            
+        // Also fetch initially if summary already exists
+        if let initialSummary = healthDataService.healthSummary {
+             Task {
+                 await self.generateSuggestedQuestions(summary: initialSummary)
+             }
+        }
+    }
+
+    // Function to generate suggested questions (Implementation needed)
+    private func generateSuggestedQuestions(summary: HealthDataSummary) async {
+        print("Health summary updated, attempting to generate suggested questions...")
+        // 1. Format prompt using summary data (e.g., score, steps, sleep)
+        //    Keep the prompt concise but informative.
+        let prompt = formatSuggestionPrompt(summary: summary)
+        
+        // 2. Call ChatService (needs a new method)
+        do {
+            // TODO: Implement chatService.fetchSuggestedQuestions
+             let questions = try await chatService.fetchSuggestedQuestions(prompt: prompt)
+            // Ensure questions are not empty and update
+             if !questions.isEmpty {
+                 // Limit to 3-4 questions for UI neatness
+                 self.suggestedQuestions = Array(questions.prefix(4))
+                 print("Suggested questions updated: \\(self.suggestedQuestions)")
+             } else {
+                 print("AI returned empty suggestions.")
+                 // Keep default or fallback questions if needed
+                 // self.suggestedQuestions = ["Default question 1", "Default question 2"]
+             }
+        } catch {
+            print("Error fetching suggested questions: \\(error.localizedDescription)")
+            // Handle error - maybe keep default questions or show an error indicator?
+            // For now, just keep the existing/default ones
+        }
+    }
+    
+    // Helper to format the prompt for the AI
+    private func formatSuggestionPrompt(summary: HealthDataSummary) -> String {
+        // Extract key metrics - handle nil values gracefully
+        let score = HealthDataService.shared.calculateHealthScore(from: summary) // Recalculate or get score
+        
+        // Safely calculate average steps, making avgSteps optional
+        let avgSteps: Double? = {
+            guard let dailySteps = summary.dailySteps, !dailySteps.isEmpty else {
+                return nil
+            }
+            let totalSteps = dailySteps.values.reduce(0, +)
+            let count = Double(dailySteps.count)
+            return totalSteps / count
+        }()
+        
+        let avgSleepHours = (summary.averageSleepDuration ?? 0) / 3600
+        
+        var summaryText = "用户健康数据摘要：\\n"
+        summaryText += "- 健康评分: \\(score)/100\\n"
+        if let avgSteps = avgSteps, avgSteps > 0 {
+             summaryText += "- 平均步数: \\(Int(avgSteps)) 步/天\\n"
+        }
+        if avgSleepHours > 0 {
+             summaryText += "- 平均睡眠: \\(String(format: \"%.1f\", avgSleepHours)) 小时/天\\n"
+        }
+        if let avgHr = summary.averageHeartRate {
+            summaryText += "- 平均心率: \\(Int(avgHr)) 次/分钟\\n"
+        }
+        
+        // Add more key data points if desired...
+        
+        summaryText += "\\n根据以上数据，为用户生成3-4个简短的、可以直接点击提问的建议（例如：'如何提高我的步数？' 或 '我的睡眠质量怎么样？'）。请直接返回问题列表，每个问题占一行，不要添加任何其他说明文字。"
+        
+        return summaryText
     }
 } 

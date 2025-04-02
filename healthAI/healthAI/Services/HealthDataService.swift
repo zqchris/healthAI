@@ -125,6 +125,7 @@ class HealthDataService: ObservableObject {
                 if let summary = summary {
                     self.healthSummary = summary
                     self.isLoading = false
+                    print("已从本地数据库加载健康摘要，年龄: \(summary.age ?? -1), 身高: \(summary.latestHeight ?? -1)")
                 } else {
                     // 如果本地没有数据，尝试从HealthKit获取
                     if self.errorMessage == nil {
