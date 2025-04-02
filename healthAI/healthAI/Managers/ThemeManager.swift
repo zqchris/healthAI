@@ -35,5 +35,15 @@ class ThemeManager {
         static let bodyFatPercentage = Color.orange
         static let dietaryEnergy = Color.green
         static let dietaryWater = Color.cyan
+        
+        // 健康评分颜色
+        static func healthScore(_ score: Int) -> Color {
+            switch score {
+            case 0..<40: return .red
+            case 40..<70: return .orange
+            case 70..<90: return .blue
+            default: return .green
+            }
+        }
     } 
 } 

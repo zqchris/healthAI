@@ -217,7 +217,7 @@ struct ActivityAnalysisCard: View {
             HStack {
                 Image(systemName: "figure.walk")
                     .font(.title2)
-                    .foregroundColor(ThemeManager.DataColors.steps)
+                    .foregroundColor(ThemeManager.shared.DataColors.steps)
                 
                 Text("活动分析")
                     .font(.headline)
@@ -401,7 +401,7 @@ struct SleepAnalysisCard: View {
             HStack {
                 Image(systemName: "bed.double.fill")
                     .font(.title2)
-                    .foregroundColor(ThemeManager.DataColors.sleep)
+                    .foregroundColor(ThemeManager.shared.DataColors.sleep)
                 
                 Text("睡眠分析")
                     .font(.headline)
@@ -719,7 +719,7 @@ struct HeartRateAnalysisCard: View {
             HStack {
                 Image(systemName: "heart.fill")
                     .font(.title2)
-                    .foregroundColor(ThemeManager.DataColors.heartRate)
+                    .foregroundColor(ThemeManager.shared.DataColors.heartRate)
                 
                 Text("心率分析")
                     .font(.headline)
