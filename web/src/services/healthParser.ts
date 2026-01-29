@@ -23,10 +23,27 @@ export class HealthParser {
   async parseExportFile(file: File): Promise<HealthSummary> {
     const zip = await JSZip.loadAsync(file);
 
-    // 查找 export.xml 文件
-    const xmlFile = zip.file(/export\.xml$/i)[0];
+    // 列出所有文件，调试用
+    const allFiles = Object.keys(zip.files);
+    console.log('ZIP 文件内容:', allFiles);
+
+    // 查找 export.xml 文件（支持多种可能的路径）
+    let xmlFile = zip.file(/export\.xml$/i)[0];
+
+    // 如果没找到，尝试其他可能的文件名
     if (!xmlFile) {
-      throw new Error('无法找到 export.xml 文件，请确保上传的是 Apple Health 导出的 ZIP 文件');
+      xmlFile = zip.file(/导出\.xml$/i)[0];
+    }
+    if (!xmlFile) {
+      // 查找任何 .xml 文件
+      const xmlFiles = allFiles.filter(f => f.endsWith('.xml') && !f.includes('cda'));
+      if (xmlFiles.length > 0) {
+        xmlFile = zip.file(xmlFiles[0]) as JSZip.JSZipObject;
+      }
+    }
+
+    if (!xmlFile) {
+      throw new Error(`无法找到健康数据文件。ZIP 包含: ${allFiles.slice(0, 10).join(', ')}${allFiles.length > 10 ? '...' : ''}`);
     }
 
     const xmlContent = await xmlFile.async('string');
