@@ -3,7 +3,7 @@
  * 直接从浏览器调用 API，API Key 存储在本地
  */
 
-import { AIConfig, ChatMessage, AIResponse, AIProvider, DEFAULT_CONFIGS } from '../types/ai';
+import { AIConfig, ChatMessage, AIResponse, DEFAULT_CONFIGS } from '../types/ai';
 import { HealthSummary } from '../types/health';
 
 const STORAGE_KEY = 'health_ai_config';

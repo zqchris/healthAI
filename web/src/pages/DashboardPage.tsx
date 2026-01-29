@@ -34,7 +34,8 @@ export function DashboardPage({ healthData, onClearData }: DashboardPageProps) {
   // 最近7天数据
   const recentSteps = steps.slice(0, 7);
   const recentSleep = sleep.slice(0, 7);
-  const recentActivity = activity.slice(0, 7);
+  const _recentActivity = activity.slice(0, 7); // 保留供将来使用
+  void _recentActivity;
   const restingHR = heartRate.filter(h => h.context === 'resting').slice(0, 7);
 
   return (
