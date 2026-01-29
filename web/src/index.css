@@ -1,0 +1,89 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --primary: #4BC3A4;
+  --accent: #3A7BFF;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* 自定义滚动条 */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #d1d5db;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #9ca3af;
+}
+
+/* 动画 */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.3s ease-out;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+.animate-pulse {
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+/* 卡片样式 */
+.card {
+  @apply bg-white rounded-xl shadow-sm border border-gray-100 p-4;
+}
+
+.card-hover {
+  @apply hover:shadow-md transition-shadow duration-200;
+}
+
+/* 按钮样式 */
+.btn-primary {
+  @apply bg-primary-500 text-white px-4 py-2 rounded-lg font-medium
+         hover:bg-primary-600 active:bg-primary-700
+         disabled:opacity-50 disabled:cursor-not-allowed
+         transition-colors duration-200;
+}
+
+.btn-secondary {
+  @apply bg-gray-100 text-gray-700 px-4 py-2 rounded-lg font-medium
+         hover:bg-gray-200 active:bg-gray-300
+         transition-colors duration-200;
+}
+
+/* 输入框样式 */
+.input {
+  @apply w-full px-4 py-2 border border-gray-200 rounded-lg
+         focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent
+         transition-all duration-200;
+}
+
+/* 移动端优化 */
+@media (max-width: 640px) {
+  .card {
+    @apply rounded-lg;
+  }
+}
